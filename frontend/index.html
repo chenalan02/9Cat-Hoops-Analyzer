@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>9Cat Hoops</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <div id="input-screen">
+            <h1>9Cat Hoops Analyzer</h1>
+            <p>Enter your fantasy team dashboard link below:</p>
+            
+            <input type="text" id="team-link-input" placeholder="https://fantasy.espn.com/...">
+            <br>
+            <button id="analyze-btn">Analyze Team</button>
+            <p id="loading-msg" style="display:none;">Scraping data... please wait...</p>
+        </div>
+
+        <div id="result-screen" style="display:none;">
+            <h1>Your Team Dashboard</h1>
+            <p>API connection successful! We are on the next screen.</p>
+            <p>Link received: <strong id="display-link"></strong></p>
+            <button onclick="location.reload()">Go Back</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
