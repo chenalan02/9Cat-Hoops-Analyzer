@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app  # Enables instant code updates
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5500:80"       # Maps your laptop's 5500 to the container's 80
+    volumes:
+      - ./frontend:/usr/share/nginx/html

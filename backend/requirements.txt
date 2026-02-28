@@ -1,0 +1,12 @@
+# Core API Framework
+fastapi
+uvicorn[standard]
+pydantic
+
+# Data Analysis & Scraping 
+pandas
+numpy
+scipy
+matplotlib
+
+
