@@ -1,35 +1,22 @@
 # 9Cat-Hoops-Analyzer
 
-Start container
+Docker
 ```bash
-docker compose up
+docker compose up # starts containers
+docker compose up --build # build and starts containers if any env/dependency changes
+docker compose up -d # starts containers in background
+docker compose down # stop and removes containers
+docker compose stop # pauses containers
 ```
 
-Start container in background
+Manual start backend
 ```bash
-docker compose up -d
+pipx install poetry
+poetry lock # if you made changes to toml file
+poetry install
+eval $(poetry env activate) # activate virtual env in terminal
+uvicorn main:app --reload # manual Startup Backend
 ```
 
-Stop and removes containers
-```bash
-docker compose down
-```
-
-Pauses containers
-```bash
-docker compose stop
-```
-
-Manual Python setup
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-Manual Startup Backend
-```bash
-uvicorn main:app --reload
-```
 
 
