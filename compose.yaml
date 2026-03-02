@@ -1,14 +1,19 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: .                   # The "Search Area" is the root
+      dockerfile: backend/Dockerfile # The "Recipe" is in the folder
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app  # Enables instant code updates
+      - ./backend:/app/backend
+    env_file: .env
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend          # Frontend usually stays isolated
+      dockerfile: Dockerfile
     ports:
-      - "5500:80"       # Maps your laptop's 5500 to the container's 80
+      - "5500:80"
     volumes:
       - ./frontend:/usr/share/nginx/html
