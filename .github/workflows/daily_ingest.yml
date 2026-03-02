@@ -40,4 +40,4 @@ jobs:
           BRONZE_URL: ${{ secrets.BRONZE_URL }}
           DATABRICKS_URL: ${{ secrets.DATABRICKS_URL }}
           ETL_TOKEN: ${{ secrets.ETL_TOKEN }}
-        run: poetry run python ingest.py
+        run: poetry run python data_eng/daily_ingest.py
