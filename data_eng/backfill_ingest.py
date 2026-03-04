@@ -47,6 +47,6 @@ if __name__ == "__main__":
         df.to_parquet(temp_file, index=False)
 
         with open(temp_file, "rb") as f:
-            w.files.upload(os.path.join(os.getenv("BRONZE_URL"), temp_file), f, overwrite=True)
+            w.files.upload(os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), temp_file), f, overwrite=True)
 
         os.remove(temp_file)

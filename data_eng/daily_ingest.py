@@ -28,24 +28,12 @@ if __name__ == "__main__":
     dt = datetime.now()
     dt_from = dt - timedelta(days=1)
 
-    custom_headers = {
-    'Host': 'stats.nba.com',
-    'Connection': 'keep-alive',
-    'Cache-Control': 'max-age=0',
-    'Upgrade-Insecure-Requests': '1',
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,/;q=0.8,application/signed-exchange;v=b3',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'en-US,en;q=0.9',
-    }
-
     extract_json = leaguegamelog.LeagueGameLog(
         player_or_team_abbreviation='P', # 'P' for Player stats
         season=current_season,
         season_type_all_star='Regular Season',
         date_from_nullable=dt_from.strftime("%m/%d/%Y"),
         date_to_nullable=None,
-        headers=custom_headers
     ).get_json()
 
     df = pd.DataFrame([{
@@ -57,6 +45,6 @@ if __name__ == "__main__":
     df.to_parquet(temp_file, index=False)
 
     with open(temp_file, "rb") as f:
-        w.files.upload(os.path.join(os.getenv("BRONZE_URL"), temp_file), f, overwrite=True)
+        w.files.upload(os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), temp_file), f, overwrite=True)
 
     os.remove(temp_file)

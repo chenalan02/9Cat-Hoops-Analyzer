@@ -1900,6 +1900,25 @@ files = [
 ]
 
 [[package]]
+name = "myql"
+version = "1.2.7"
+description = "Python Wrapper for the Yahoo! Query Language. Allowing to run YQL queries, fetch financial data and create YQL Open Tables"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "myql-1.2.7.tar.gz", hash = "sha256:3a79e5179ed94ac5894f19441b38092005a970f25015295e2b14675d88ec829d"},
+]
+
+[package.dependencies]
+oauthlib = ">=0.7.2"
+rauth = ">=0.7.1"
+requests = ">=2.7.0"
+requests-oauthlib = ">=0.4.2"
+six = ">=1.9.0"
+yahoo-oauth = ">=0.1.7"
+
+[[package]]
 name = "nba-api"
 version = "1.11.4"
 description = "An API Client package to access the APIs for NBA.com"
@@ -2133,6 +2152,23 @@ files = [
     {file = "numpy-2.4.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:be71bf1edb48ebbbf7f6337b5bfd2f895d1902f6335a5830b20141fc126ffba0"},
     {file = "numpy-2.4.2.tar.gz", hash = "sha256:659a6107e31a83c4e33f763942275fd278b21d095094044eb35569e86a21ddae"},
 ]
+
+[[package]]
+name = "oauthlib"
+version = "3.3.1"
+description = "A generic, spec-compliant, thorough implementation of the OAuth request-signing logic"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1"},
+    {file = "oauthlib-3.3.1.tar.gz", hash = "sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9"},
+]
+
+[package.extras]
+rsa = ["cryptography (>=3.0.0)"]
+signals = ["blinker (>=1.4.0)"]
+signedtoken = ["cryptography (>=3.0.0)", "pyjwt (>=2.0.0,<3)"]
 
 [[package]]
 name = "packaging"
@@ -2519,6 +2555,24 @@ files = [
 tests = ["pytest"]
 
 [[package]]
+name = "pyaml"
+version = "24.12.1"
+description = "PyYAML-based module to produce a bit more pretty and readable YAML-serialized data"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "pyaml-24.12.1-py3-none-any.whl", hash = "sha256:97ed4d31ecc1d7bb93f3d2a66e53548c53d6f572d75d166957abc64a06033b76"},
+    {file = "pyaml-24.12.1.tar.gz", hash = "sha256:3938c2b47924ed74524f844961a011852f7968fb8cc7b3933276087c5d1e45b3"},
+]
+
+[package.dependencies]
+PyYAML = "*"
+
+[package.extras]
+anchors = ["unidecode"]
+
+[[package]]
 name = "pyarrow"
 version = "23.0.1"
 description = "Python library for Apache Arrow"
@@ -2821,14 +2875,14 @@ six = ">=1.5"
 
 [[package]]
 name = "python-dotenv"
-version = "1.2.2"
+version = "1.1.1"
 description = "Read key-value pairs from a .env file and set them as environment variables"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a"},
-    {file = "python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3"},
+    {file = "python_dotenv-1.1.1-py3-none-any.whl", hash = "sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc"},
+    {file = "python_dotenv-1.1.1.tar.gz", hash = "sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab"},
 ]
 
 [package.extras]
@@ -3065,6 +3119,21 @@ files = [
 cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
+name = "rauth"
+version = "0.7.3"
+description = "A Python library for OAuth 1.0/a, 2.0, and Ofly."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "rauth-0.7.3-py2-none-any.whl", hash = "sha256:b18590fbd77bc3d871936bbdb851377d1b0c08e337b219c303f8fc2b5a42ef2d"},
+    {file = "rauth-0.7.3.tar.gz", hash = "sha256:524cdbc1c28560eacfc9a9d40c59525eb8d00fdf07fbad86107ea24411477b0a"},
+]
+
+[package.dependencies]
+requests = ">=1.2.3"
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 description = "JSON Referencing + Python"
@@ -3101,6 +3170,25 @@ urllib3 = ">=1.21.1,<3"
 [package.extras]
 socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
+
+[[package]]
+name = "requests-oauthlib"
+version = "2.0.0"
+description = "OAuthlib authentication support for Requests."
+optional = false
+python-versions = ">=3.4"
+groups = ["main"]
+files = [
+    {file = "requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9"},
+    {file = "requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36"},
+]
+
+[package.dependencies]
+oauthlib = ">=3.0.0"
+requests = ">=2.0.0"
+
+[package.extras]
+rsa = ["oauthlib[signedtoken] (>=3.0.0)"]
 
 [[package]]
 name = "rfc3339-validator"
@@ -3464,6 +3552,17 @@ anyio = ">=3.6.2,<5"
 
 [package.extras]
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
+
+[[package]]
+name = "stringcase"
+version = "1.2.0"
+description = "String case converter."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "stringcase-1.2.0.tar.gz", hash = "sha256:48a06980661908efe8d9d34eab2b6c13aefa2163b3ced26972902e3bdfd87008"},
+]
 
 [[package]]
 name = "terminado"
@@ -3966,7 +4065,42 @@ files = [
     {file = "widgetsnbextension-4.0.15.tar.gz", hash = "sha256:de8610639996f1567952d763a5a41af8af37f2575a41f9852a38f947eb82a3b9"},
 ]
 
+[[package]]
+name = "yahoo-oauth"
+version = "2.1.1"
+description = "A very easy to use OAuth python library for Yahoo! APIs."
+optional = false
+python-versions = "<4.0,>=3.10"
+groups = ["main"]
+files = [
+    {file = "yahoo_oauth-2.1.1-py3-none-any.whl", hash = "sha256:bacd876298d933c57d230893aaf8f1cb70f3306cc0ffda50c3b511ec3a06a8e2"},
+    {file = "yahoo_oauth-2.1.1.tar.gz", hash = "sha256:9d10452ad705e44f2b4adc64ddf01f9e97e1cbc5bf2fac1d9f7d6de2c2ae73d6"},
+]
+
+[package.dependencies]
+myql = ">=1.2.7,<2.0.0"
+pyaml = ">=24.4.0,<25.0.0"
+rauth = ">=0.7.3,<0.8.0"
+
+[[package]]
+name = "yfpy"
+version = "17.0.0"
+description = "Python API wrapper for the Yahoo Fantasy Sports public API."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "yfpy-17.0.0-py3-none-any.whl", hash = "sha256:b0a374205064194ae5a4486ae925a528c42491f3c1e5ceea704819c3d491ec3f"},
+    {file = "yfpy-17.0.0.tar.gz", hash = "sha256:beee91d5160130a756c4950eb36f60fe35b22fef3304f69c6fb1342a66c02299"},
+]
+
+[package.dependencies]
+python-dotenv = "1.1.1"
+requests = "2.32.5"
+stringcase = "1.2.0"
+yahoo-oauth = "2.1.1"
+
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.13.0"
-content-hash = "809118b245cbf9ef16240c05af73e8fcf380bb2b40031daa4fc42a9db2520701"
+content-hash = "6090d5cbb3dae575b23a1e92fb7f6c8129f074e8a52d812f779004a7e028d409"
