@@ -41,10 +41,11 @@ if __name__ == "__main__":
         "raw_json": extract_json
     }])
 
-    temp_file = f"nba_logs_{dt.strftime("%Y-%m-%d")}.parquet"
+    temp_file = f"/Users/alanchen/Documents/9Cat-Hoops-Analyzer/nba_logs_{dt.strftime("%Y-%m-%d")}.parquet"
     df.to_parquet(temp_file, index=False)
 
     with open(temp_file, "rb") as f:
-        w.files.upload(os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), temp_file), f, overwrite=True)
+        remote_path = os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), os.path.basename(temp_file))
+        w.files.upload(remote_path, f, overwrite=True)
 
     os.remove(temp_file)
