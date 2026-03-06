@@ -34,7 +34,7 @@ if __name__ == "__main__":
         season_type_all_star='Regular Season',
         date_from_nullable=dt_from.strftime("%m/%d/%Y"),
         date_to_nullable=None,
-    ).get_json()
+    ).get_normalized_json()
 
     df = pd.DataFrame([{
         "extraction_timestamp": dt.isoformat(),

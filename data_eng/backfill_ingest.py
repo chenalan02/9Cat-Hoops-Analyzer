@@ -36,7 +36,7 @@ if __name__ == "__main__":
             player_or_team_abbreviation='P', # 'P' for Player stats
             season=season,
             season_type_all_star='Regular Season'
-        ).get_json()
+        ).get_normalized_json()
 
         df = pd.DataFrame([{
             "extraction_timestamp": datetime.now().isoformat(),
@@ -47,6 +47,7 @@ if __name__ == "__main__":
         df.to_parquet(temp_file, index=False)
 
         with open(temp_file, "rb") as f:
-            w.files.upload(os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), temp_file), f, overwrite=True)
+            remote_path = os.path.join(os.getenv("BRONZE_GAME_LOG_URL"), os.path.basename(temp_file))
+            w.files.upload(remote_path, f, overwrite=True)
 
         os.remove(temp_file)
