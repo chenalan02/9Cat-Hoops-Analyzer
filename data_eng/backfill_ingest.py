@@ -5,8 +5,6 @@ from nba_api.stats.endpoints import leaguegamelog
 from databricks.sdk import WorkspaceClient
 from dotenv import load_dotenv
 
-load_dotenv()
-
 def get_current_season():
     current_date = datetime.now()
     current_year = current_date.year
@@ -23,14 +21,26 @@ def get_previous_season(season):
     previous_end_year = start_year
     return f"{previous_start_year}-{str(previous_end_year)[-2:]}"
 
+def get_prev_n_seasons(current_season, n):
+    seasons = []
+    start_year = int(current_season.split('-')[0])
+    for i in range(n):
+        previous_start_year = start_year - (i + 1)
+        previous_end_year = start_year - i
+        seasons.append(f"{previous_start_year}-{str(previous_end_year)[-2:]}")
+    return seasons
+
 if __name__ == "__main__":
+
+    load_dotenv()
 
     w = WorkspaceClient(
         host=os.getenv("DATABRICKS_URL"),
         token=os.getenv("ETL_TOKEN")
     )
 
-    for season in [get_current_season(), get_previous_season(get_current_season())]:
+    current_season = get_current_season()
+    for season in [current_season] + get_prev_n_seasons(current_season, 5):
 
         extract_json = leaguegamelog.LeagueGameLog(
             player_or_team_abbreviation='P', # 'P' for Player stats
