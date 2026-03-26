@@ -57,12 +57,12 @@ if __name__ == "__main__":
     for season in [current_season] + get_prev_n_seasons(current_season, 5):
 
         bio_data = leaguedashplayerbiostats.LeagueDashPlayerBioStats(season=season)
-        bio_df = bio_data.get_data_frames()[0][["PLAYER_ID", "PLAYER_NAME", "AGE", "PLAYER_HEIGHT_INCHES"]]
+        bio_df = bio_data.get_data_frames()[0][["PLAYER_ID", "PLAYER_NAME", "AGE", "PLAYER_HEIGHT_INCHES", "PLAYER_WEIGHT"]]
         bio_df["SEASON"] = season
         bio_ingest_df = pd.concat([bio_ingest_df, bio_df], ignore_index=True)
         time.sleep(0.5)  # Sleep for 1 second to avoid hitting rate limits
 
-    bio_json = bio_ingest_df.to_json(orient='records', lines=True)
+    bio_json = bio_ingest_df.to_json(orient='records')
 
     df = pd.DataFrame([{
         "extraction_timestamp": datetime.now().isoformat(),
