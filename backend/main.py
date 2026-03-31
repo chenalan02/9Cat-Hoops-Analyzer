@@ -33,10 +33,8 @@ def fetch_and_store_databricks(app: FastAPI):
             cursor.execute("SELECT * FROM nba_fantasy.gold.ema")
             arrow_table = cursor.fetchall_arrow()
             df = arrow_table.to_pandas()
-            print(df.head())
             app.state.player_stats_ema = df.set_index('PLAYER_NAME').to_dict(orient='index')
             
-
             cursor.execute("SELECT * FROM nba_fantasy.gold.nba_games_schedule")
             arrow_table = cursor.fetchall_arrow()
             app.state.nba_schedule = arrow_table.to_pandas()
@@ -107,20 +105,21 @@ async def analyze_team_link(request: TeamRequest):
     league_id = link_split[-2]
     team_id = link_split[-1]
 
+    auth_path = Path("/app/auth")
+
     yahoo_query = YahooFantasySportsQuery(
         league_id=league_id,
         game_code="nba",
         offline=False,
         yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
         yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= Path(".."),
-        save_token_data_to_env_file=True
+        env_file_location= auth_path,
+        save_token_data_to_env_file=False
     )
 
     league = FantasyLeague(yahoo_query, app.state.player_stats_ema)
-
     return {
         "status": "success",
         "message": "Link received!",
-        "payload": {} # Placeholder for actual player stats later
+        "payload": league.to_dict() # Placeholder for actual player stats later
     }

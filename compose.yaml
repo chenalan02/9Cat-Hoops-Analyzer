@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app/backend
+      - ./yahoo_auth:/app/auth
     env_file: .env
 
   frontend:

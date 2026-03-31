@@ -12,7 +12,7 @@ class FantasyLeague():
         self.season = league_info.season
         self.scoring_type = league_info.scoring_type
         self.teams = []
-        self.num_teams = yahoo_query.get_league_info().num_teams()
+        self.num_teams = yahoo_query.get_league_info().num_teams
         for team_id in range(1, self.num_teams + 1):
             team_info = yahoo_query.get_team_info(team_id)
             self.teams.append(Team(team_info, player_stats_ema))
@@ -60,7 +60,7 @@ class Player():
         self.positions = player.display_position
         self.selected_position = player.selected_position.position
         self.nba_team = player.editorial_team_abbr
-        self.ema_stats = Stats(player_stats_ema[self.name])
+        self.ema_stats = Stats(player_stats_ema.get(self.name, {}))
 
     def to_dict(self):
         return {
@@ -76,7 +76,7 @@ class Player():
 class Stats():
     def __init__(self, stats_dict):
         for key in EMA_STATS:
-            setattr(self, key, stats_dict[key])
+            setattr(self, key, stats_dict.get(key, None))
 
     def to_dict(self):
         return {key: getattr(self, key) for key in EMA_STATS}
