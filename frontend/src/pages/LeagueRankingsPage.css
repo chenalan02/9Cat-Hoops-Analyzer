@@ -1,0 +1,10 @@
+.league-page {}
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+.table-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1rem; }
+.table-legend { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.75rem; display: flex; gap: 1rem; }
+.my-team-row td { background: rgba(0, 230, 118, 0.04) !important; }
+.my-team-row td:first-child { border-left: 2px solid var(--accent); }
+.league-team-cell { display: flex; align-items: center; gap: 8px; }
+.league-team-name { font-weight: 600; font-size: 0.85rem; }
+.center-content { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; }
+.empty-state { display: flex; flex-direction: column; align-items: center; }

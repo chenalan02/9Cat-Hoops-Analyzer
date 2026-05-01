@@ -1,7 +1,7 @@
 services:
   backend:
     build:
-      context: .                   # The "Search Area" is the root
+      context: . # The "Search Area" is the root
       dockerfile: backend/Dockerfile # The "Recipe" is in the folder
     ports:
       - "8000:8000"
@@ -12,9 +12,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend          # Frontend usually stays isolated
+      context: ./frontend # Frontend usually stays isolated
       dockerfile: Dockerfile
     ports:
       - "5500:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html

@@ -1,126 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description"
-        content="9Cat Hoops Analyzer — Dominate your fantasy basketball league with 9-category player analytics.">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="9Cat Hoops Analyzer — Dominate your fantasy basketball league with 9-category player analytics, z-score rankings, matchup odds, and draft tools." />
     <title>9Cat Hoops Analyzer</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-
-<body>
-
-    <!-- Navigation -->
-    <nav class="nav">
-        <div class="nav-logo" id="nav-logo">
-            <span class="logo-icon">🏀</span>
-            <span>9Cat <span class="accent">Hoops</span></span>
-        </div>
-        <ul class="nav-links">
-            <li><a href="#" class="active" id="nav-home">Home</a></li>
-            <li><a href="#" id="nav-dashboard">Dashboard</a></li>
-            <li><a href="#" id="nav-about">About</a></li>
-        </ul>
-    </nav>
-
-    <!-- Input Screen -->
-    <div id="input-screen" class="screen">
-
-        <!-- Hero -->
-        <section class="hero">
-            <h1 class="hero-title">9Cat <span class="accent">Hoops</span></h1>
-            <p class="hero-tagline">
-                The smartest fantasy basketball analyzer. Paste your team link, get instant 9-category breakdowns, and
-                dominate your league.
-            </p>
-
-            <div class="search-bar">
-                <input type="text" id="team-link-input" placeholder="https://fantasy.espn.com/your-team-link">
-                <button id="analyze-btn">Analyze</button>
-            </div>
-
-            <div class="loading" id="loading-msg">
-                <div class="spinner"></div>
-                <span>Crunching the numbers...</span>
-            </div>
-        </section>
-
-        <div class="divider"></div>
-
-        <!-- How It Works -->
-        <section class="section">
-            <h2 class="section-title">How It Works</h2>
-            <p class="section-subtitle">Three steps to fantasy domination</p>
-
-            <div class="card-grid">
-                <div class="card feature-card">
-                    <div class="feature-icon">🔗</div>
-                    <h3>Paste Your Link</h3>
-                    <p>Drop your ESPN, Yahoo, or any fantasy platform team link into the search bar above.</p>
-                </div>
-                <div class="card feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h3>Crunch the Numbers</h3>
-                    <p>We analyze every player across all 9 categories — PTS, REB, AST, STL, BLK, 3PM, FG%, FT%, and TO.
-                    </p>
-                </div>
-                <div class="card feature-card">
-                    <div class="feature-icon">🏆</div>
-                    <h3>Dominate Your League</h3>
-                    <p>See your strengths, weaknesses, and which categories to target in trades and on the waiver wire.
-                    </p>
-                </div>
-            </div>
-        </section>
-
-        <div class="divider"></div>
-
-        <!-- Category Preview -->
-        <section class="section">
-            <h2 class="section-title">9 Categories Covered</h2>
-            <p class="section-subtitle">Full breakdown across every stat that matters</p>
-
-            <div class="card-grid" id="category-preview-grid">
-                <!-- Populated by JS -->
-            </div>
-        </section>
-    </div>
-
-    <!-- Result Screen -->
-    <div id="result-screen" class="screen hidden">
-
-        <section class="section">
-            <div class="dashboard-header">
-                <h2>📋 Your Team Dashboard</h2>
-                <button class="btn-back" id="back-btn">← Back to Search</button>
-            </div>
-
-            <!-- Overview Bar -->
-            <div class="overview-bar" id="overview-bar">
-                <!-- Populated by JS -->
-            </div>
-
-            <div class="divider" style="margin: 0 0 2rem 0;"></div>
-
-            <h2 class="section-title">Category Breakdown</h2>
-            <p class="section-subtitle">Your roster's top contributors per category</p>
-
-            <!-- 9-Category Grid -->
-            <div class="card-grid" id="category-grid">
-                <!-- Populated by JS -->
-            </div>
-        </section>
-    </div>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <p>Built with 🏀 by <span class="accent">9Cat Hoops</span> &middot; Not affiliated with the NBA or any fantasy
-            platform.</p>
-    </footer>
-
-    <script src="script.js"></script>
-</body>
-
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏀</text></svg>" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

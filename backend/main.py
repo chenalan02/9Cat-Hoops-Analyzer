@@ -69,11 +69,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-# Allow your local frontend to talk to this local backend
+# Allow the local frontend to talk to this local backend
 origins = [
-    "http://127.0.0.1:5500", # Common port for VS Code Live Server
+    "http://127.0.0.1:5500",   # VS Code Live Server (legacy)
     "http://localhost:5500",
-    # Add your friend's React port here later (e.g., http://localhost:3000)
+    "http://localhost:5173",    # Vite dev server
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",    # Create React App / other dev servers
+    "http://127.0.0.1:3000",
 ]
 
 app.add_middleware(
