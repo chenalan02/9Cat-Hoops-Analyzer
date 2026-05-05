@@ -1,0 +1,105 @@
+.matchup-page {}
+.center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; text-align:center; }
+.empty-state { display:flex; flex-direction:column; align-items:center; }
+
+.matchup-selector {
+  margin-bottom: 1.5rem;
+}
+
+.matchup-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.vs-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vs-team strong {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.vs-divider {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--text-muted);
+  letter-spacing: 3px;
+}
+
+.opp-select {
+  padding: 10px 14px;
+  font-family: var(--font);
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  min-width: 200px;
+  transition: border-color var(--transition);
+}
+.opp-select:focus { border-color: var(--accent); }
+
+.matchup-summary {
+  text-align: center;
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+
+.summary-pct { font-size: 3rem; font-weight: 900; }
+.summary-label { font-size: 0.8rem; color: var(--text-muted); }
+
+.sim-result { margin-bottom: 1.5rem; }
+
+.sim-bars { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.sim-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sim-label { width: 50px; font-weight: 700; font-size: 0.85rem; }
+
+.sim-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sim-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s ease;
+}
+
+.sim-pct { width: 45px; text-align: right; font-weight: 700; font-size: 0.9rem; }
+
+.odds-vs-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.select-prompt {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 3rem;
+  font-size: 0.9rem;
+}
+
+.streamers-section h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }

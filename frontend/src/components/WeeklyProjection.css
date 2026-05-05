@@ -1,0 +1,59 @@
+.weekly-proj-panel {
+  margin-bottom: 2rem;
+}
+
+.proj-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.proj-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.proj-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.proj-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.proj-control-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.proj-games-input {
+  width: 60px;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  text-align: center;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.proj-games-input:focus { border-color: var(--accent); }
+
+.ci-toggle {
+  display: flex;
+  gap: 4px;
+}

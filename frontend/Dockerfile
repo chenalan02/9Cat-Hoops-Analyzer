@@ -1,15 +1,14 @@
-# Use the lightweight Nginx Alpine image
+# Build stage
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Serve stage
 FROM nginx:alpine
-
-# Remove the default Nginx welcome page
-RUN rm -rf /usr/share/nginx/html/*
-
-# Copy your local frontend files (index.html, script.js, style.css) 
-# into the folder Nginx uses to serve web content
-COPY . /usr/share/nginx/html
-
-# Expose port 80 (Standard HTTP)
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
-
-# Start Nginx in the foreground so the container doesn't exit
 CMD ["nginx", "-g", "daemon off;"]
