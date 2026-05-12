@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
         fetch_and_store_databricks, 
         'cron', 
         hour=3, 
-        minute=0, 
+        minute=30, 
         args=[app]
     )
 
@@ -101,6 +101,9 @@ app.add_middleware(
 class TeamRequest(BaseModel):
     fantasy_link: str
 
+class MatchupRequest(BaseModel):
+    teams_dict: dict
+
 
 @app.get("/")
 def home():
@@ -109,7 +112,7 @@ def home():
 
 
 @app.post("/analyze-team")
-async def analyze_team_link(request: TeamRequest):
+def analyze_team_link(request: TeamRequest):
     
     received_link = request.fantasy_link
     print(f"DEBUG: Received link to scrape: {received_link}")
@@ -136,5 +139,17 @@ async def analyze_team_link(request: TeamRequest):
     return {
         "status": "success",
         "message": "Link received!",
-        "payload": league.to_dict() # Placeholder for actual player stats later
+        "payload": league.to_dict()
     }
+
+@app.post("/matchup-analysis")
+def matchup_analysis(request: TeamRequest):
+    teams_dict = request.teams_dict
+
+    results = {}
+    return {
+        "status": "success",
+        "message": "Matchup analysis complete!",
+        "payload": results
+    }
+
