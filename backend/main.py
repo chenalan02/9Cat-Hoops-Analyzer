@@ -30,14 +30,24 @@ def fetch_and_store_databricks(app: FastAPI):
     access_token=os.getenv("BACKEND_TOKEN")
     ) as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM nba_fantasy.gold.ema")
-            arrow_table = cursor.fetchall_arrow()
-            df = arrow_table.to_pandas()
-            app.state.player_stats_ema = df.set_index('PLAYER_NAME').to_dict(orient='index')
             
+            # fetch and cache NBA Schedule
             cursor.execute("SELECT * FROM nba_fantasy.gold.nba_games_schedule")
             arrow_table = cursor.fetchall_arrow()
             app.state.nba_schedule = arrow_table.to_pandas()
+
+            app.state.player_stats = {}
+            # fetch and cache player stats/rankings
+            for table in ["ema", "ros_rankings", "weekly_rankings", "preseason_rankings"]:
+                cursor.execute(f"SELECT * FROM nba_fantasy.gold.{table}")
+                arrow_table = cursor.fetchall_arrow()
+                df = arrow_table.to_pandas()
+                app.state.player_stats[table] = (
+                    df.replace({np.nan: None})
+                      .set_index('PLAYER_NAME')
+                      .to_dict(orient='index')
+                )
+
 
     print(f"[{datetime.datetime.now()}] Databricks data fetched and stored in app state.")
 
@@ -120,7 +130,8 @@ async def analyze_team_link(request: TeamRequest):
         save_token_data_to_env_file=False
     )
 
-    league = FantasyLeague(yahoo_query, app.state.player_stats_ema)
+    league = FantasyLeague(yahoo_query, app.state.player_stats)
+
     return {
         "status": "success",
         "message": "Link received!",
