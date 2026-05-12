@@ -131,6 +131,7 @@ async def analyze_team_link(request: TeamRequest):
     )
 
     league = FantasyLeague(yahoo_query, app.state.player_stats)
+    print(league.to_dict()) # Debug print to verify data structure before sending to frontend
 
     return {
         "status": "success",

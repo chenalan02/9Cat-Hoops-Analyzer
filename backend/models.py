@@ -81,8 +81,8 @@ class Player():
 
 class Stats():
     def __init__(self, stats_dict):
-        for key in EMA_STATS:
+        for key in stats_dict.keys():
             setattr(self, key, stats_dict.get(key, None))
 
     def to_dict(self):
-        return {key: getattr(self, key) for key in EMA_STATS}
+        return {key: getattr(self, key) for key in self.__dict__.keys()}
