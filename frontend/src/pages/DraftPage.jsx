@@ -1,14 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { TeamDataContext } from '../App.jsx';
 import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
 import { formatZ, formatMu } from '../utils/formatters.js';
 import CategoryToggle from '../components/CategoryToggle.jsx';
-import { MOCK_LEAGUE } from '../utils/mockData.js';
 import './DraftPage.css';
 
 /**
  * Draft Rankings page.
- * Uses all players from MOCK_LEAGUE (or real league when available)
- * and computes per-player z-scores and average-z ranking.
+ * Uses all players from the user's league (fetched via backend).
+ * Computes per-player z-scores and average-z ranking.
  * Supports category punt toggles.
  */
 function buildDraftPool(leagueTeams) {
@@ -50,6 +51,8 @@ function computeDraftZScores(players) {
 }
 
 export default function DraftPage() {
+  const { leagueData, loading } = useContext(TeamDataContext);
+  const navigate = useNavigate();
   const [puntedCats, setPuntedCats]   = useState(new Set());
   const [sortKey, setSortKey]         = useState('avgZ');
   const [sortDir, setSortDir]         = useState('desc');
@@ -69,7 +72,10 @@ export default function DraftPage() {
     [puntedCats]
   );
 
-  const allPlayers = useMemo(() => computeDraftZScores(buildDraftPool(MOCK_LEAGUE.teams)), []);
+  const allPlayers = useMemo(
+    () => leagueData?.teams ? computeDraftZScores(buildDraftPool(leagueData.teams)) : [],
+    [leagueData]
+  );
 
   const rankedPlayers = useMemo(() => {
     return allPlayers.map(p => {
@@ -112,20 +118,31 @@ export default function DraftPage() {
     return <span className="sort-icon active">{sortDir === 'asc' ? '↑' : '↓'}</span>;
   };
 
+  if (loading) return (
+    <div className="page-wrapper center-content">
+      <div className="spinner" style={{ width: 36, height: 36 }} />
+    </div>
+  );
+
+  if (!leagueData) return (
+    <div className="page-wrapper center-content">
+      <div className="empty-state">
+        <h2 style={{ marginBottom: '0.5rem' }}>No League Data</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          Analyze your team first to view draft rankings.
+        </p>
+        <button className="btn-primary" onClick={() => navigate('/')}>Analyze My Team</button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="draft-page page-wrapper fade-up">
       <div className="section">
-        <h1 className="section-title" style={{ textAlign: 'left' }}>🏀 Draft Rankings</h1>
+        <h1 className="section-title" style={{ textAlign: 'left' }}>Draft Rankings</h1>
         <p className="section-subtitle" style={{ textAlign: 'left' }}>
           Players ranked by average z-score across active categories
         </p>
-
-        <div className="draft-notice card" style={{ marginBottom: '1rem' }}>
-          <span className="badge badge-orange">Mock Data</span>
-          <span style={{ marginLeft: '0.75rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Showing demo players. Connect your Yahoo league link to see real player pool.
-          </span>
-        </div>
 
         <CategoryToggle puntedCats={puntedCats} onToggle={handleToggle} label="Punt Strategy" />
 

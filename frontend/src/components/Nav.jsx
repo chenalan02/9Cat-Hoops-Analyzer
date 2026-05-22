@@ -6,6 +6,7 @@ const LINKS = [
   { to: '/your-team',       label: 'My Team'              },
   { to: '/league-rankings', label: 'League'               },
   { to: '/matchup',         label: 'Matchup'              },
+  { to: '/trade',           label: 'Trade'                },
   { to: '/draft',           label: 'Draft'                },
   { to: '/info',            label: 'Info'                 },
 ];

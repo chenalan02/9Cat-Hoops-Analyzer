@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { MOCK_LEAGUE } from '../utils/mockData.js';
 import { computeLeagueZScores } from '../utils/zScore.js';
 
 const STORAGE_KEY = '9cat_league_data';
@@ -56,15 +55,12 @@ export function useTeamData() {
       setMyTeamId(parsedTeamId);
 
     } catch (err) {
-      // Fall back to mock data
-      console.warn('Backend unavailable — using mock data:', err.message);
-      const enriched = computeLeagueZScores(MOCK_LEAGUE.teams);
-      const result = { ...MOCK_LEAGUE, teams: enriched };
-
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(result));
-      sessionStorage.setItem('9cat_my_team_id', String(parsedTeamId));
-      setLeagueData(result);
-      setMyTeamId(parsedTeamId);
+      console.error('Failed to analyze team:', err.message);
+      setError('Invalid link or server unavailable. Please check that your Yahoo Fantasy link is correct and try again.');
+      setLeagueData(null);
+      setMyTeamId(null);
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem('9cat_my_team_id');
     } finally {
       setLoading(false);
     }

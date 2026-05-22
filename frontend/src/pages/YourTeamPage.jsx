@@ -103,19 +103,18 @@ export default function YourTeamPage() {
           })}
         </div>
 
-        {/* Tabs */}
         <div className="tab-bar">
           <button
             className={`tab-btn ${activeTab === 'roster' ? 'active' : ''}`}
             onClick={() => setActiveTab('roster')}
           >
-            📋 Roster Rankings
+            Roster Rankings
           </button>
           <button
             className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
             onClick={() => setActiveTab('weekly')}
           >
-            📅 Weekly Projection
+            Weekly Projection
           </button>
         </div>
 

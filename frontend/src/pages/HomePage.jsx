@@ -20,7 +20,7 @@ function isValidYahooLink(url) {
 }
 
 export default function HomePage() {
-  const { fetchTeam, loading } = useContext(TeamDataContext);
+  const { fetchTeam, loading, error: fetchError } = useContext(TeamDataContext);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -34,10 +34,25 @@ export default function HomePage() {
     }
     setError('');
     await fetchTeam(trimmed);
-    navigate('/your-team');
   };
 
-  const handleKey = (e) => { if (e.key === 'Enter') handleAnalyze(); };
+  // Navigate after a successful fetch (loading done, no errors, data exists)
+  const { leagueData } = useContext(TeamDataContext);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleAnalyzeWrapped = async () => {
+    setSubmitted(true);
+    await handleAnalyze();
+  };
+
+  // Use effect-like pattern: if submitted, not loading, no error, and we have data → navigate
+  if (submitted && !loading && !fetchError && leagueData) {
+    navigate('/your-team');
+  }
+
+  const displayError = error || fetchError;
+
+  const handleKey = (e) => { if (e.key === 'Enter') handleAnalyzeWrapped(); };
 
   return (
     <div className="home-page page-wrapper fade-up">
@@ -55,7 +70,7 @@ export default function HomePage() {
             matchup odds, draft rankings, and weekly projections.
           </p>
 
-          <div className={`search-bar ${error ? 'error' : ''}`}>
+          <div className={`search-bar ${displayError ? 'error' : ''}`}>
             <input
               id="team-link-input"
               type="url"
@@ -70,7 +85,7 @@ export default function HomePage() {
             <button
               id="analyze-btn"
               className="btn-primary search-btn"
-              onClick={handleAnalyze}
+              onClick={handleAnalyzeWrapped}
               disabled={loading}
               aria-label="Analyze team"
             >
@@ -78,10 +93,10 @@ export default function HomePage() {
             </button>
           </div>
 
-          {error && <p className="input-error" role="alert">{error}</p>}
+          {displayError && <p className="input-error" role="alert">{displayError}</p>}
 
           <p className="hero-hint">
-            🔒 We never store your data &nbsp;·&nbsp; Works with public team links
+            Works with public Yahoo Fantasy Basketball team links
           </p>
         </div>
       </section>
@@ -102,24 +117,6 @@ export default function HomePage() {
               <div className="feature-icon">{f.icon}</div>
               <h3>{f.title}</h3>
               <p>{f.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="divider" />
-
-      {/* 9 Categories */}
-      <section className="section">
-        <h2 className="section-title">9 Categories Covered</h2>
-        <p className="section-subtitle">Full breakdown across every stat that matters</p>
-        <div className="card-grid-9">
-          {CATEGORIES.map(cat => (
-            <div className="card cat-preview-card" key={cat.key}>
-              <div className="cat-icon">{cat.icon}</div>
-              <div className="cat-key accent">{cat.key}</div>
-              <div className="cat-name">{cat.name}</div>
-              <p className="cat-desc">{cat.desc}</p>
             </div>
           ))}
         </div>
