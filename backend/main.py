@@ -134,8 +134,6 @@ def analyze_team_link(request: TeamRequest):
     )
 
     league = FantasyLeague(yahoo_query, app.state.player_stats)
-    print(league.to_dict()) # Debug print to verify data structure before sending to frontend
-
     return {
         "status": "success",
         "message": "Link received!",
@@ -143,7 +141,7 @@ def analyze_team_link(request: TeamRequest):
     }
 
 @app.post("/matchup-analysis")
-def matchup_analysis(request: TeamRequest):
+def matchup_analysis(request: MatchupRequest):
     teams_dict = request.teams_dict
 
     results = {}
