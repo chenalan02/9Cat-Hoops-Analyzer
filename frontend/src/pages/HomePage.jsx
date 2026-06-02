@@ -67,7 +67,7 @@ export default function HomePage() {
           </h1>
           <p className="hero-tagline">
             Paste your Yahoo Fantasy Basketball team link for instant 9-category z-score analysis,
-            matchup odds, draft rankings, and weekly projections.
+            matchup odds, draft rankings, and weekly aggregates.
           </p>
 
           <div className={`search-bar ${displayError ? 'error' : ''}`}>

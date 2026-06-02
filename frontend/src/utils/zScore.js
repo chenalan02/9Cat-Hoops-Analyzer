@@ -4,15 +4,15 @@
 // For TO (turnovers), a lower value is better, so z-score is inverted.
 
 export const CATEGORIES = [
-  { key: 'PTS',  label: 'Points',          muKey: 'mu_pts',  varKey: 'var_pts',  icon: '🔥', lowerBetter: false },
-  { key: 'REB',  label: 'Rebounds',         muKey: 'mu_reb',  varKey: 'var_reb',  icon: '🏀', lowerBetter: false },
-  { key: 'AST',  label: 'Assists',          muKey: 'mu_ast',  varKey: 'var_ast',  icon: '🎯', lowerBetter: false },
-  { key: 'STL',  label: 'Steals',           muKey: 'mu_stl',  varKey: 'var_stl',  icon: '🖐️', lowerBetter: false },
-  { key: 'BLK',  label: 'Blocks',           muKey: 'mu_blk',  varKey: 'var_blk',  icon: '🚫', lowerBetter: false },
-  { key: '3PM',  label: '3-Pointers Made',  muKey: 'mu_fg3m', varKey: 'var_fg3m', icon: '🎱', lowerBetter: false },
-  { key: 'FG%',  label: 'Field Goal %',     muKey: null,      varKey: null,       icon: '📈', lowerBetter: false, derived: 'fg' },
-  { key: 'FT%',  label: 'Free Throw %',     muKey: null,      varKey: null,       icon: '🎯', lowerBetter: false, derived: 'ft' },
-  { key: 'TO',   label: 'Turnovers',        muKey: 'mu_tov',  varKey: 'var_tov',  icon: '⚠️', lowerBetter: true },
+  { key: 'PTS',  label: 'Points',          muKey: 'mu_pts',  varKey: 'var_pts',  icon: '', lowerBetter: false },
+  { key: 'REB',  label: 'Rebounds',         muKey: 'mu_reb',  varKey: 'var_reb',  icon: '', lowerBetter: false },
+  { key: 'AST',  label: 'Assists',          muKey: 'mu_ast',  varKey: 'var_ast',  icon: '', lowerBetter: false },
+  { key: 'STL',  label: 'Steals',           muKey: 'mu_stl',  varKey: 'var_stl',  icon: '', lowerBetter: false },
+  { key: 'BLK',  label: 'Blocks',           muKey: 'mu_blk',  varKey: 'var_blk',  icon: '', lowerBetter: false },
+  { key: '3PM',  label: '3-Pointers Made',  muKey: 'mu_fg3m', varKey: 'var_fg3m', icon: '', lowerBetter: false },
+  { key: 'FG%',  label: 'Field Goal %',     muKey: null,      varKey: null,       icon: '', lowerBetter: false, derived: 'fg' },
+  { key: 'FT%',  label: 'Free Throw %',     muKey: null,      varKey: null,       icon: '', lowerBetter: false, derived: 'ft' },
+  { key: 'TO',   label: 'Turnovers',        muKey: 'mu_tov',  varKey: 'var_tov',  icon: '', lowerBetter: true },
 ];
 
 // Get the μ value for a player in a given category.

@@ -4,6 +4,7 @@ import { TeamDataContext } from '../App.jsx';
 import TeamTable from '../components/TeamTable.jsx';
 import CategoryToggle from '../components/CategoryToggle.jsx';
 import WeeklyProjection from '../components/WeeklyProjection.jsx';
+import TeamZScoreChart from '../components/TeamZScoreChart.jsx';
 import { CATEGORIES, rankPlayers, getPlayerMu, zScoreClass } from '../utils/zScore.js';
 import { formatMu } from '../utils/formatters.js';
 import './YourTeamPage.css';
@@ -69,7 +70,7 @@ export default function YourTeamPage() {
             <div className="team-meta">
               <span className="badge badge-green">League Rank #{myTeam.rank}</span>
               <span className="badge badge-blue">
-                {myTeam.record?.wins ?? '?'}W–{myTeam.record?.losses ?? '?'}L
+                {myTeam.record?.wins ?? '?'}W–{myTeam.record?.losses ?? '?'}L–{myTeam.record?.ties ?? '?'}T
               </span>
               {leagueData?.name && (
                 <span className="badge badge-orange">📋 {leagueData.name}</span>
@@ -103,6 +104,9 @@ export default function YourTeamPage() {
           })}
         </div>
 
+        {/* Z-Score Strength & Variance Chart */}
+        <TeamZScoreChart activePlayers={activePlayers} />
+
         <div className="tab-bar">
           <button
             className={`tab-btn ${activeTab === 'roster' ? 'active' : ''}`}
@@ -114,7 +118,7 @@ export default function YourTeamPage() {
             className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
             onClick={() => setActiveTab('weekly')}
           >
-            Weekly Projection
+            Weekly Aggregate
           </button>
         </div>
 

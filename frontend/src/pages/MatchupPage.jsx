@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
 import { CATEGORIES, getPlayerMu, getPlayerVar } from '../utils/zScore.js';
 import { formatMu, formatPct } from '../utils/formatters.js';
+import MatchupDistributionChart from '../components/MatchupDistributionChart.jsx';
 import './MatchupPage.css';
 
 /** Simple normal CDF approximation */
@@ -45,8 +46,10 @@ function computeMatchupOdds(myPlayers, oppPlayers, projGames = 3.5) {
 
     return {
       cat,
-      myMu:   my.mu,
-      oppMu:  opp.mu,
+      myMu:    my.mu,
+      mySigma: my.sigma,
+      oppMu:   opp.mu,
+      oppSigma:opp.sigma,
       winProb,
     };
   });
@@ -93,6 +96,7 @@ export default function MatchupPage() {
   const [oppTeamId, setOppTeamId] = useState('');
   const [simResult, setSimResult] = useState(null);
   const [simRunning, setSimRunning] = useState(false);
+  const [activeCatKey, setActiveCatKey] = useState('PTS');
 
   const opponents = leagueData?.teams?.filter(t => t.team_id !== myTeam?.team_id) ?? [];
   const oppTeam   = opponents.find(t => String(t.team_id) === String(oppTeamId)) ?? null;
@@ -101,6 +105,11 @@ export default function MatchupPage() {
     if (!myTeam || !oppTeam) return null;
     return computeMatchupOdds(myTeam.players, oppTeam.players);
   }, [myTeam, oppTeam]);
+
+  const selectedCatData = useMemo(() => {
+    if (!odds) return null;
+    return odds.find(o => o.cat.key === activeCatKey) ?? odds[0];
+  }, [odds, activeCatKey]);
 
   const runMonteCarlo = () => {
     if (!myTeam || !oppTeam) return;
@@ -214,7 +223,11 @@ export default function MatchupPage() {
                             : winProb >= 0.4 ? 'var(--text-secondary)'
                             : '#e53935';
                 return (
-                  <div className="odds-card" key={cat.key}>
+                  <div
+                    className={`odds-card ${activeCatKey === cat.key ? 'active' : ''}`}
+                    key={cat.key}
+                    onClick={() => setActiveCatKey(cat.key)}
+                  >
                     <div className="odds-cat">{cat.icon} {cat.label}</div>
                     <div className="odds-pct" style={{ color }}>{formatPct(winProb)}</div>
                     <div className="odds-bar">
@@ -231,6 +244,15 @@ export default function MatchupPage() {
                 );
               })}
             </div>
+
+            {selectedCatData && (
+              <MatchupDistributionChart
+                category={selectedCatData.cat}
+                my={{ mu: selectedCatData.myMu, sigma: selectedCatData.mySigma }}
+                opp={{ mu: selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
+                winProb={selectedCatData.winProb}
+              />
+            )}
           </div>
         )}
 

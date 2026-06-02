@@ -55,8 +55,8 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
     <div className="weekly-proj-panel card fade-up">
       <div className="proj-header">
         <div>
-          <h3 className="proj-title">Weekly Projection</h3>
-          <p className="proj-subtitle">Expected team totals given hypothetical game week</p>
+          <h3 className="proj-title">Weekly Aggregate</h3>
+          <p className="proj-subtitle">Expected weekly team totals given hypothetical games played</p>
         </div>
         <div className="proj-controls">
           <label className="proj-control-label">

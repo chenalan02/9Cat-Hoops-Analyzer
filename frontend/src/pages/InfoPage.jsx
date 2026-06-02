@@ -2,7 +2,7 @@ import './InfoPage.css';
 
 const SECTIONS = [
   {
-    icon: '📐',
+    icon: '',
     title: 'Exponential Moving Average (EMA) Stats',
     content: `Player statistics are computed using an Exponential Moving Average over their game logs,
     giving more weight to recent performance. This means a hot streak or a slump will be reflected
@@ -10,7 +10,7 @@ const SECTIONS = [
     to capture both expected output and uncertainty.`,
   },
   {
-    icon: '📊',
+    icon: '',
     title: 'Z-Score Methodology',
     content: `For each of the 9 fantasy categories, we compute a z-score for every rostered player
     across the league: z = (player_μ - league_mean) / league_std. This normalizes all categories
@@ -19,7 +19,7 @@ const SECTIONS = [
     TO rate still results in a positive z-score contribution.`,
   },
   {
-    icon: '⚖️',
+    icon: '',
     title: 'Punt Strategy & Category Toggling',
     content: `The ranking on My Team is computed as the sum of z-scores across all active (non-punted)
     categories. By toggling a category off (punting), you're telling the ranker to ignore that
@@ -28,16 +28,16 @@ const SECTIONS = [
     beside each player's rank indicates how their ranking changes vs. the baseline (all categories active).`,
   },
   {
-    icon: '📅',
-    title: 'Weekly Projections & Confidence Intervals',
-    content: `Team weekly projections multiply each active player's per-game μ by the number of
+    icon: '',
+    title: 'Weekly Aggregates & Confidence Intervals',
+    content: `Team weekly aggregates multiply each active player's per-game μ by the number of
     projected games in the week (default 3.5). The confidence interval uses the Central Limit
     Theorem: since each player's output is approximately normally distributed, team totals
     have variance equal to the sum of individual player variances. We report both 95% CI
     (±1.96σ) and 68% CI (±1σ). FG% and FT% variances are derived using the delta method.`,
   },
   {
-    icon: '⚔️',
+    icon: '',
     title: 'Matchup Win Probabilities',
     content: `For each category, we model the difference between your team total and your opponent's
     team total as a normal distribution. The win probability is P(myTotal > oppTotal), computed
@@ -46,7 +46,7 @@ const SECTIONS = [
     losses, and ties across all 9 categories.`,
   },
   {
-    icon: '🏀',
+    icon: '',
     title: 'Draft Rankings',
     content: `Draft rankings are computed using the same z-score methodology — each player is
     ranked by the sum of their z-scores across active categories. Toggling categories on the
@@ -66,7 +66,6 @@ export default function InfoPage() {
         <div className="info-grid">
           {SECTIONS.map((s, i) => (
             <div className="info-card card" key={i}>
-              <div className="info-icon">{s.icon}</div>
               <h2 className="info-title">{s.title}</h2>
               <p className="info-body">{s.content}</p>
             </div>
