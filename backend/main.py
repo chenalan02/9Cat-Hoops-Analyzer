@@ -153,6 +153,7 @@ def matchup_analysis(request: MatchupRequest):
     roster_positions = request.roster_positions
     stats_source = request.stats_source
     monte_carlo = request.monte_carlo
+    nba_schedule = app.state.nba_schedule
 
     yahoo_query = YahooFantasySportsQuery(
         league_id=league_id,
@@ -165,9 +166,9 @@ def matchup_analysis(request: MatchupRequest):
     )
 
     if monte_carlo:
-        results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source)
+        results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
     else:
-        results = matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source)
+        results = matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
 
     return {
         "status": "success",

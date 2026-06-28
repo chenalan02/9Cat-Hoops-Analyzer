@@ -86,7 +86,7 @@ def _get_league_roster_slots(roster_positions):
     return active_slots, inactive_slots
 
 
-def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule=app["nba_schedule"]):
+def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule):
     '''
     Get game schedule for the week for both teams, then solve for the optimal lineup based on player stats and roster positions.
     '''
@@ -213,12 +213,12 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
     return team_lineups
 
 
-def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source):
+def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule):
     '''
     Analyze the matchup between two teams for the week, considering their schedules and player stats.
     '''
 
-    optimal_lineups = _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source)
+    optimal_lineups = _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule)
     players_list = team1["players"] + team2["players"]
     players_dict = {player['name']: player for player in players_list}
 
@@ -314,11 +314,11 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
     return {"win_probs": win_probs, "agg_dists": agg_dists}
 
 
-def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, n_sims=10000):
+def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule, n_sims=10000):
     '''
     Analyze the matchup between two teams for the week, considering their schedules and player stats.
     '''
-    optimal_lineups = _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source)
+    optimal_lineups = _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule)
     players_list = team1["players"] + team2["players"]
     players_dict = {player['name']: player for player in players_list}
 
