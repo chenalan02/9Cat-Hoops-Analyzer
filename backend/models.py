@@ -4,7 +4,8 @@ from backend.utils import *
 class FantasyLeague():
     def __init__(self, yahoo_query, player_stats):
         league_info = yahoo_query.get_league_info()
-        time.sleep(0.1)  # to avoid hitting Yahoo API rate limits
+        time.sleep(0.05)  # to avoid hitting Yahoo API rate limits
+        self.current_week = league_info.current_week
         self.league_id = league_info.league_id
         self.name = league_info.name
         self.season = league_info.season
@@ -16,9 +17,8 @@ class FantasyLeague():
         for team_id in range(1, self.num_teams + 1):
             team_info = yahoo_query.get_team_info(team_id)
             self.teams.append(Team(team_info, player_stats))
-            time.sleep(0.1)
+            time.sleep(0.05)
 
-    
 
     def to_dict(self):
         return {

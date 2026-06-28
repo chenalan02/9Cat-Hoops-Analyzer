@@ -17,6 +17,7 @@ from scipy.stats import norm
 from yfpy.query import YahooFantasySportsQuery
 
 from backend.models import *
+from backend.analysis import matchup_analysis_monte_carlo, matchup_analysis
 
 load_dotenv()
 
@@ -102,14 +103,18 @@ class TeamRequest(BaseModel):
     fantasy_link: str
 
 class MatchupRequest(BaseModel):
-    teams_dict: dict
-
+    league_id: str
+    team1: int
+    team2: int
+    week_num: int
+    date_start: str
+    roster_positions: dict
+    stats_source: str
+    monte_carlo: bool = False
 
 @app.get("/")
 def home():
     return {"message": "Basketball API is running. Go to /docs"}
-
-
 
 @app.post("/analyze-team")
 def analyze_team_link(request: TeamRequest):
@@ -121,15 +126,13 @@ def analyze_team_link(request: TeamRequest):
     league_id = link_split[-2]
     team_id = link_split[-1]
 
-    auth_path = Path("/app/auth")
-
     yahoo_query = YahooFantasySportsQuery(
         league_id=league_id,
         game_code="nba",
         offline=False,
         yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
         yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= auth_path,
+        env_file_location= Path("/app/auth"),
         save_token_data_to_env_file=False
     )
 
@@ -142,9 +145,30 @@ def analyze_team_link(request: TeamRequest):
 
 @app.post("/matchup-analysis")
 def matchup_analysis(request: MatchupRequest):
-    teams_dict = request.teams_dict
+    league_id = request.league_id
+    team1 = request.team1
+    team2 = request.team2
+    week_num = request.week_num
+    date_start = request.date_start
+    roster_positions = request.roster_positions
+    stats_source = request.stats_source
+    monte_carlo = request.monte_carlo
 
-    results = {}
+    yahoo_query = YahooFantasySportsQuery(
+        league_id=league_id,
+        game_code="nba",
+        offline=False,
+        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+        env_file_location= Path("/app/auth"),
+        save_token_data_to_env_file=False
+    )
+
+    if monte_carlo:
+        results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source)
+    else:
+        results = matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source)
+
     return {
         "status": "success",
         "message": "Matchup analysis complete!",
