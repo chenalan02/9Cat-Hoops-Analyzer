@@ -1,31 +1,18 @@
 import re
 
-EMA_STATS = [
-    "mu_min",
-    "mu_pts",
-    "var_pts",
-    "mu_reb",
-    "var_reb",
-    "mu_ast",
-    "var_ast",
-    "mu_blk",
-    "var_blk",
-    "mu_stl",
-    "var_stl",
-    "mu_tov",
-    "var_tov",
-    "mu_fg3m",
-    "var_fg3m",
-    "mu_fga",
-    "var_fga",
-    "mu_fgm",
-    "var_fgm",
-    "mu_fta",
-    "var_fta",
-    "mu_ftm",
-    "var_ftm",
-    "games_played"
-]
+
+YAHOO_STATS_MAP = {
+    12: "pts",
+    15: "reb",
+    16: "ast",
+    17: "stl",
+    18: "blk",
+    19: "tov",
+    10: "fg3m",
+    5: "fg",
+    8: "ft"
+}
+
 
 def clean_player_name(name):
     if name is None:

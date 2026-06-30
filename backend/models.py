@@ -1,22 +1,24 @@
-import numpy as np
-import pandas as pd
 import time
 from backend.utils import *
 
 class FantasyLeague():
     def __init__(self, yahoo_query, player_stats):
         league_info = yahoo_query.get_league_info()
-        time.sleep(0.5)  # to avoid hitting Yahoo API rate limits
+        time.sleep(0.05)  # to avoid hitting Yahoo API rate limits
+        self.current_week = league_info.current_week
         self.league_id = league_info.league_id
         self.name = league_info.name
         self.season = league_info.season
         self.scoring_type = league_info.scoring_type
+        self.roster_positions = league_info.settings.roster_positions
+        self.stat_categories = league_info.settings.stat_categories
         self.teams = []
         self.num_teams = yahoo_query.get_league_info().num_teams
         for team_id in range(1, self.num_teams + 1):
             team_info = yahoo_query.get_team_info(team_id)
             self.teams.append(Team(team_info, player_stats))
-            time.sleep(0.5)
+            time.sleep(0.05)
+
 
     def to_dict(self):
         return {
@@ -24,7 +26,9 @@ class FantasyLeague():
             "name": self.name,
             "season": self.season,
             "scoring_type": self.scoring_type,
-            "teams": [team.to_dict() for team in self.teams]
+            "teams": [team.to_dict() for team in self.teams],
+            "roster_positions": self.roster_positions,
+            "stat_categories": self.stat_categories
         }
 
 
@@ -57,7 +61,8 @@ class Player():
     def __init__(self, player, player_stats):
         self.name = clean_player_name(player.name.full)
         self.photo_url = player.image_url
-        self.positions = player.display_position
+        self.status = player.status
+        self.positions = player.display_position # eligible positions
         self.selected_position = player.selected_position.position
         self.nba_team = player.editorial_team_abbr
         self.ema_stats = Stats(player_stats["ema"].get(self.name, {}))
@@ -69,6 +74,7 @@ class Player():
         return {
             "name": self.name,
             "photo_url": self.photo_url,
+            "status": self.status,
             "positions": self.positions,
             "selected_position": self.selected_position,
             "nba_team": self.nba_team,
