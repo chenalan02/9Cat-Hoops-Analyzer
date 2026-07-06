@@ -23,22 +23,26 @@ export function useTeamData() {
     try { return parseInt(sessionStorage.getItem('9cat_my_team_id')) || null; }
     catch { return null; }
   });
+  const [fantasyLink, setFantasyLink] = useState(() => {
+    try { return sessionStorage.getItem('9cat_fantasy_link') || ''; }
+    catch { return ''; }
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchTeam = useCallback(async (fantasyLink) => {
+  const fetchTeam = useCallback(async (linkVal) => {
     setLoading(true);
     setError(null);
 
     // Parse team_id from Yahoo link
-    const parts = fantasyLink.split('/');
+    const parts = linkVal.split('/');
     const parsedTeamId = parseInt(parts[parts.length - 1]) || 1;
 
     try {
       const response = await fetch('/api/analyze-team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fantasy_link: fantasyLink }),
+        body: JSON.stringify({ fantasy_link: linkVal }),
       });
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -47,20 +51,26 @@ export function useTeamData() {
       if (data.status !== 'success') throw new Error(data.message || 'Unknown error');
 
       const enriched = computeLeagueZScores(data.payload.teams);
+      // Preserve all league metadata (league_id, week_num, roster_positions, etc.)
       const result = { ...data.payload, teams: enriched };
 
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(result));
       sessionStorage.setItem('9cat_my_team_id', String(parsedTeamId));
+      sessionStorage.setItem('9cat_fantasy_link', linkVal);
       setLeagueData(result);
       setMyTeamId(parsedTeamId);
+      setFantasyLink(linkVal);
+      return result;
 
     } catch (err) {
       console.error('Failed to analyze team:', err.message);
       setError('Invalid link or server unavailable. Please check that your Yahoo Fantasy link is correct and try again.');
       setLeagueData(null);
       setMyTeamId(null);
+      setFantasyLink('');
       sessionStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem('9cat_my_team_id');
+      sessionStorage.removeItem('9cat_fantasy_link');
     } finally {
       setLoading(false);
     }
@@ -69,13 +79,15 @@ export function useTeamData() {
   const clearData = useCallback(() => {
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem('9cat_my_team_id');
+    sessionStorage.removeItem('9cat_fantasy_link');
     setLeagueData(null);
     setMyTeamId(null);
+    setFantasyLink('');
   }, []);
 
   const myTeam = leagueData && myTeamId
     ? leagueData.teams.find(t => t.team_id === myTeamId) ?? leagueData.teams[0]
     : leagueData?.teams?.[0] ?? null;
 
-  return { leagueData, myTeam, loading, error, fetchTeam, clearData };
+  return { leagueData, myTeam, loading, error, fetchTeam, clearData, fantasyLink };
 }

@@ -5,8 +5,7 @@ import TeamTable from '../components/TeamTable.jsx';
 import CategoryToggle from '../components/CategoryToggle.jsx';
 import WeeklyProjection from '../components/WeeklyProjection.jsx';
 import TeamZScoreChart from '../components/TeamZScoreChart.jsx';
-import { CATEGORIES, rankPlayers, getPlayerMu, zScoreClass } from '../utils/zScore.js';
-import { formatMu } from '../utils/formatters.js';
+import { rankPlayers } from '../utils/zScore.js';
 import './YourTeamPage.css';
 
 export default function YourTeamPage() {
@@ -80,29 +79,7 @@ export default function YourTeamPage() {
           <button className="btn-secondary" onClick={() => navigate('/')}>← New Search</button>
         </div>
 
-        {/* Overview Strip */}
-        <div className="overview-strip" style={{ marginBottom: '1.5rem' }}>
-          {CATEGORIES.map(cat => {
-            const vals = activePlayers
-              .map(p => getPlayerMu(p, cat))
-              .filter(v => v !== null && !isNaN(v));
-            const avg  = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-            const zAvg = activePlayers.length
-              ? activePlayers.reduce((s, p) => s + (p.zScores?.[cat.key] ?? 0), 0) / activePlayers.length
-              : 0;
-            return (
-              <div className="overview-tile" key={cat.key}>
-                <div className="ot-label">{cat.key}</div>
-                <div className={`ot-value ${zScoreClass(zAvg)}`}>
-                  {formatMu(avg, cat.key)}
-                </div>
-                <div className="ot-rank">
-                  {zAvg >= 0 ? '+' : ''}{zAvg.toFixed(2)} z
-                </div>
-              </div>
-            );
-          })}
-        </div>
+
 
         {/* Z-Score Strength & Variance Chart */}
         <TeamZScoreChart activePlayers={activePlayers} />

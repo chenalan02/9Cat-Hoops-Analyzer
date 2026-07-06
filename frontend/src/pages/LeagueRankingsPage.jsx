@@ -1,9 +1,9 @@
 import { useState, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
-import { CATEGORIES, getPlayerMu, computeTeamWeeklyProjection, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
-import { formatMu, ordinal } from '../utils/formatters.js';
-import TeamZScoreChart from '../components/TeamZScoreChart.jsx';
+import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import { formatMu } from '../utils/formatters.js';
+import LeagueWeeklyProjectionsChart from '../components/LeagueWeeklyProjectionsChart.jsx';
 import './LeagueRankingsPage.css';
 
 export default function LeagueRankingsPage() {
@@ -11,14 +11,7 @@ export default function LeagueRankingsPage() {
   const navigate = useNavigate();
   const [sortKey, setSortKey]   = useState('overall');
   const [sortDir, setSortDir]   = useState('asc');
-  const [selectedTeamId, setSelectedTeamId] = useState(() => {
-    return myTeam?.team_id ?? leagueData?.teams?.[0]?.team_id ?? 1;
-  });
 
-  const selectedTeam = useMemo(() => {
-    if (!leagueData?.teams) return null;
-    return leagueData.teams.find(t => t.team_id === selectedTeamId) ?? leagueData.teams[0];
-  }, [leagueData, selectedTeamId]);
 
   // Compute team-level category μ for all teams
   const teamStats = useMemo(() => {
@@ -115,43 +108,7 @@ export default function LeagueRankingsPage() {
           </div>
         </div>
 
-        {/* Team Z-Score Profile Visualizer */}
-        <div className="league-chart-section" style={{ marginBottom: '2rem' }}>
-          <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>Team Z-Score Profile</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Select Team:</span>
-              <select
-                value={selectedTeamId}
-                onChange={(e) => setSelectedTeamId(parseInt(e.target.value))}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: 'var(--bg-card, #1e2026)',
-                  border: '1px solid var(--border, rgba(255,255,255,0.1))',
-                  color: 'var(--text-primary, #fff)',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                {leagueData.teams.map(t => (
-                  <option key={t.team_id} value={t.team_id}>
-                    {t.name} {t.team_id === myTeam?.team_id ? '(You)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          {selectedTeam && (
-            <TeamZScoreChart
-              activePlayers={selectedTeam.players.filter(
-                p => p.selected_position !== 'IL' && p.selected_position !== 'NA'
-              )}
-            />
-          )}
-        </div>
+
 
         <p className="table-hint">
           Rankings based on team-average category μ. Click column headers to sort.
@@ -226,6 +183,12 @@ export default function LeagueRankingsPage() {
           <span className="z-avg">■</span> Middle &nbsp;
           <span className="z-bad">■</span> Bottom third
         </p>
+
+        {/* Weekly Projections Chart across all teams */}
+        <LeagueWeeklyProjectionsChart 
+          leagueTeams={leagueData.teams || []} 
+          myTeam={myTeam} 
+        />
       </div>
     </div>
   );

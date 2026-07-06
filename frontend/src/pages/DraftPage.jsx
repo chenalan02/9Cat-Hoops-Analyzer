@@ -85,8 +85,9 @@ function getRosterSlot(player, slots, currentRoster) {
 }
 
 export default function DraftPage() {
-  const { leagueData, myTeam, loading } = useContext(TeamDataContext);
+  const { leagueData, myTeam, loading, fetchTeam, fantasyLink } = useContext(TeamDataContext);
   const navigate = useNavigate();
+  const [syncing, setSyncing] = useState(false);
 
   // Settings & Setup state
   const [draftStarted, setDraftStarted] = useState(false);
@@ -108,6 +109,63 @@ export default function DraftPage() {
   const [sortKey, setSortKey] = useState('avgZ');
   const [sortDir, setSortDir] = useState('desc');
   const [posFilter, setPosFilter] = useState('ALL');
+
+  const handleSyncWithYahoo = async () => {
+    if (!fantasyLink) return;
+    setSyncing(true);
+    try {
+      const freshLeagueData = await fetchTeam(fantasyLink);
+      if (freshLeagueData && freshLeagueData.teams) {
+        // Rebuild draft pool synchronously from fresh teams to find full player metadata
+        const freshPool = computeDraftZScores(buildDraftPool(freshLeagueData.teams));
+
+        const T = freshLeagueData.teams.length;
+        const teamPlayerPools = freshLeagueData.teams.map(t => [...(t.players || [])]);
+        
+        const newHistory = [];
+        let pick = 1;
+        let round = 1;
+        let hasMorePlayers = true;
+
+        while (hasMorePlayers) {
+          hasMorePlayers = false;
+          for (let indexInRound = 0; indexInRound < T; indexInRound++) {
+            // Determine which team is picking at this round/index
+            const teamIndex = (draftType === 'snake' && round % 2 === 0)
+              ? (T - 1 - indexInRound)
+              : indexInRound;
+
+            const pool = teamPlayerPools[teamIndex];
+            if (pool && pool.length > 0) {
+              const player = pool.shift();
+              // Find player in freshPool to keep full metadata (z-scores)
+              const fullPlayer = freshPool.find(p => p.name === player.name) || player;
+
+              newHistory.push({
+                player: fullPlayer,
+                teamId: teamIndex + 1,
+                teamName: freshLeagueData.teams[teamIndex].name,
+                pickNumber: pick
+              });
+              pick++;
+              hasMorePlayers = true;
+            }
+          }
+          round++;
+        }
+
+        setDraftHistory(newHistory);
+        setCurrentPick(pick);
+        setDraftStarted(true); // Auto-start draft if they synced
+        setTeamNames(freshLeagueData.teams.map(t => t.name));
+      }
+    } catch (e) {
+      console.error('Yahoo sync failed:', e);
+      alert('Failed to sync with Yahoo draft. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleToggle = (key) => {
     setPuntedCats(prev => {
@@ -517,10 +575,20 @@ export default function DraftPage() {
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '2.5rem' }}>
             <button className="btn-primary start-draft-btn" onClick={handleStartDraft}>
-              🚀 Start Draft
+              🚀 Start Draft (Manual)
             </button>
+            {fantasyLink && (
+              <button 
+                className="btn-secondary" 
+                onClick={handleSyncWithYahoo} 
+                disabled={syncing}
+                style={{ padding: '12px 28px' }}
+              >
+                {syncing ? <><span className="spinner" /> Syncing…</> : '🔄 Sync Rosters from Yahoo'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -539,9 +607,20 @@ export default function DraftPage() {
               Live draft tracker & Z-score analyzer
             </p>
           </div>
-          <button className="btn-secondary reset-draft-btn" onClick={handleResetDraft}>
-            🔄 Reset Draft
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {fantasyLink && (
+              <button 
+                className="btn-primary" 
+                onClick={handleSyncWithYahoo} 
+                disabled={syncing}
+              >
+                {syncing ? <><span className="spinner" /> Syncing…</> : '🔄 Sync with Yahoo Draft'}
+              </button>
+            )}
+            <button className="btn-secondary reset-draft-btn" onClick={handleResetDraft}>
+              🔄 Reset Draft
+            </button>
+          </div>
         </div>
 
         {/* Dashboard Grid */}

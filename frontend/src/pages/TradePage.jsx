@@ -1,40 +1,24 @@
 import { useState, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
-import { CATEGORIES, getPlayerMu, computeLeagueZScores, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import { CATEGORIES, getPlayerMu, computeTeamWeeklyProjection, computeLeagueZScores, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
 import { formatMu, formatZ } from '../utils/formatters.js';
 import './TradePage.css';
 
 // ─── Helpers ──────────────────────────────────────────
 
-function teamFgPct(players) {
-  let fgm = 0, fga = 0, ftm = 0, fta = 0;
-  for (const p of players) {
-    const s = p.ema_stats;
-    if (!s || !s.mu_min) continue;
-    fgm += s.mu_fgm ?? 0;
-    fga += s.mu_fga ?? 0;
-    ftm += s.mu_ftm ?? 0;
-    fta += s.mu_fta ?? 0;
-  }
-  return { fg: fga > 0 ? fgm / fga : null, ft: fta > 0 ? ftm / fta : null };
-}
+const PROJ_GAMES = 3.5;
 
+/**
+ * Compute weekly-level category values for a roster.
+ * Multiplies each player's per-game μ by 3.5 games/week so the
+ * category bars show expected weekly totals (matchup-level numbers).
+ */
 function computeTeamCatValues(players) {
-  const active = players.filter(
-    p => p.selected_position !== 'IL' && p.selected_position !== 'NA'
-  );
+  const proj = computeTeamWeeklyProjection(players, PROJ_GAMES);
   const result = {};
-  const pcts = teamFgPct(active);
   for (const cat of CATEGORIES) {
-    if (cat.derived === 'fg') {
-      result[cat.key] = pcts.fg;
-    } else if (cat.derived === 'ft') {
-      result[cat.key] = pcts.ft;
-    } else {
-      const vals = active.map(p => getPlayerMu(p, cat)).filter(v => v !== null && !isNaN(v));
-      result[cat.key] = vals.length ? vals.reduce((a, b) => a + b, 0) : null;
-    }
+    result[cat.key] = proj[cat.key]?.mu ?? null;
   }
   return result;
 }
