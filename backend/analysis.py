@@ -251,7 +251,7 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
                 player_info = players_dict[player_name]
                 player_stats = player_info[stats_source]
 
-                if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"]:
+                if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
 
                     for stat in counting_stats:
                         agg_dists[team_num][stat]["mu"] += player_stats["mu_" + stat]
@@ -352,7 +352,7 @@ def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start
                 player_info = players_dict[player_name]
                 player_stats = player_info[stats_source]
 
-                if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"]:
+                if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
                     # negative binomial sim for counting stats, poisson if not overdispersed
                     for stat in counting_stats:
                         mu = player_stats["mu_" + stat]
