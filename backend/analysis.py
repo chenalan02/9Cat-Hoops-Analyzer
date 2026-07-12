@@ -104,8 +104,11 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
     for date in pd.date_range(start=date_start, end=next_sunday, freq='D'):
         team1_schedule[date.strftime('%Y-%m-%d')] = {}
         team2_schedule[date.strftime('%Y-%m-%d')] = {}
-        daily_schedule = nba_schedule.loc[date]
-        games_info = daily_schedule.set_index('team').to_dict(orient='index')
+        if date in nba_schedule.index:
+            daily_schedule = nba_schedule.loc[[date]]
+            games_info = daily_schedule.set_index('team').to_dict(orient='index')
+        else:
+            games_info = {}
         teams_set = set(games_info.keys())
 
         for player in team1["players"]:
