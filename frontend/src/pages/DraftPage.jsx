@@ -468,7 +468,7 @@ export default function DraftPage() {
       }
       if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === 'asc' ? av - bv : bv - av;
-    });
+    }).slice(0, 100);
   }, [filteredList, sortKey, sortDir]);
 
   if (loading) {
