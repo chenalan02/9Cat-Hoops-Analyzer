@@ -15,9 +15,9 @@ import './WeeklyProjection.css';
  *   projGames:   number     — default 3.5
  */
 export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5 }) {
-  const [ciMode, setCiMode]   = useState('95'); // '95' | '68'
+  const [ciMode, setCiMode] = useState('95'); // '95' | '68'
   const [pgInput, setPgInput] = useState(String(projGames));
-  const [pg, setPg]           = useState(projGames);
+  const [pg, setPg] = useState(projGames);
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'bars'
 
   const proj = useMemo(
@@ -98,11 +98,11 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
           {CATEGORIES.map(cat => {
             const p = proj[cat.key];
             if (!p) return null;
-            const mu   = p.mu;
-            const low  = ciMode === '95' ? p.ci95Low  : p.ci68Low;
+            const mu = p.mu;
+            const low = ciMode === '95' ? p.ci95Low : p.ci68Low;
             const high = ciMode === '95' ? p.ci95High : p.ci68High;
             const rank = getLeagueRank(cat.key);
-            const rZ   = rankZ(rank);
+            const rZ = rankZ(rank);
 
             return (
               <div key={cat.key} className="proj-card">
@@ -126,19 +126,19 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
           {CATEGORIES.map(cat => {
             const p = proj[cat.key];
             if (!p) return null;
-            const mu   = p.mu;
-            const low  = ciMode === '95' ? p.ci95Low  : p.ci68Low;
+            const mu = p.mu;
+            const low = ciMode === '95' ? p.ci95Low : p.ci68Low;
             const high = ciMode === '95' ? p.ci95High : p.ci68High;
             const rank = getLeagueRank(cat.key);
-            const rZ   = rankZ(rank);
+            const rZ = rankZ(rank);
 
             // Percentage fill: rank 1 = 100%, last = 0%
             const fillPct = rank !== null ? ((totalTeams - rank) / (totalTeams - 1)) * 100 : 50;
             const barColor = rZ > 1.5 ? 'var(--z-elite)'
               : rZ > 0.5 ? 'var(--z-good)'
-              : rZ > -0.5 ? 'var(--z-avg)'
-              : rZ > -1.5 ? 'var(--z-poor)'
-              : 'var(--z-bad)';
+                : rZ > -0.5 ? 'var(--z-avg)'
+                  : rZ > -1.5 ? 'var(--z-poor)'
+                    : 'var(--z-bad)';
 
             // CI as fraction of value for display
             const ciHalfWidth = (high - low) / 2;
@@ -168,7 +168,7 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
                   <div
                     className="proj-error-range"
                     style={{
-                      left:  `${Math.max(0, fillPct - ciPctOfMu)}%`,
+                      left: `${Math.max(0, fillPct - ciPctOfMu)}%`,
                       width: `${Math.min(ciPctOfMu * 2, 100 - Math.max(0, fillPct - ciPctOfMu))}%`,
                     }}
                   />

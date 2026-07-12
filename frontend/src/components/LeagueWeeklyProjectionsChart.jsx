@@ -43,9 +43,13 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
       };
     });
 
-    // Sort by projected mean value descending
-    // (for turnovers, since lower is better, we can sort ascending or descending. Let's sort descending so the bars flow high-to-low visually, but keep in mind TO is inverted in zScores)
-    return [...data].sort((a, b) => b.mu - a.mu);
+    // Sort by projected mean value: descending for most stats, ascending for turnovers (since lower is better)
+    return [...data].sort((a, b) => {
+      if (activeCatKey === 'TO') {
+        return a.mu - b.mu;
+      }
+      return b.mu - a.mu;
+    });
   }, [leagueTeams, activeCatKey, projGames, myTeam]);
 
   // Handle Games per Week input change

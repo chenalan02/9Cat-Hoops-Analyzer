@@ -4,7 +4,7 @@ import { TeamDataContext } from '../App.jsx';
 import TeamTable from '../components/TeamTable.jsx';
 import CategoryToggle from '../components/CategoryToggle.jsx';
 import WeeklyProjection from '../components/WeeklyProjection.jsx';
-import TeamZScoreChart from '../components/TeamZScoreChart.jsx';
+
 import { rankPlayers } from '../utils/zScore.js';
 import './YourTeamPage.css';
 
@@ -81,8 +81,7 @@ export default function YourTeamPage() {
 
 
 
-        {/* Z-Score Strength & Variance Chart */}
-        <TeamZScoreChart activePlayers={activePlayers} />
+
 
         <div className="tab-bar">
           <button
