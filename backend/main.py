@@ -17,6 +17,7 @@ from scipy.stats import norm
 from yfpy.query import YahooFantasySportsQuery
 
 from backend.models import *
+from backend.analysis import matchup_analysis_monte_carlo, matchup_analysis as run_matchup_analysis_calc
 
 load_dotenv()
 
@@ -30,22 +31,29 @@ def fetch_and_store_databricks(app: FastAPI):
     access_token=os.getenv("BACKEND_TOKEN")
     ) as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM nba_fantasy.gold.ema")
-            arrow_table = cursor.fetchall_arrow()
-            df = arrow_table.to_pandas()
-            app.state.player_stats_ema = df.set_index('PLAYER_NAME').to_dict(orient='index')
             
+            # fetch and cache NBA Schedule
             cursor.execute("SELECT * FROM nba_fantasy.gold.nba_games_schedule")
             arrow_table = cursor.fetchall_arrow()
             app.state.nba_schedule = arrow_table.to_pandas()
 
-    print(f"[{datetime.datetime.now()}] Databricks data fetched and stored in app state.")
+            app.state.player_stats = {}
+            # fetch and cache player stats/rankings
+            for table in ["ema", "ros_rankings", "weekly_rankings", "preseason_rankings"]:
+                cursor.execute(f"SELECT * FROM nba_fantasy.gold.{table}")
+                arrow_table = cursor.fetchall_arrow()
+                df = arrow_table.to_pandas()
+                app.state.player_stats[table] = (
+                    df.replace({np.nan: None})
+                      .set_index('PLAYER_NAME')
+                      .to_dict(orient='index')
+                )
 
-    # app.state is a persistent object linked to the app
+    print(f"[{datetime.datetime.now()}] Databricks data fetched and stored in app state.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run on starup
+    # Run on startup
     fetch_and_store_databricks(app)
     
     # run daily
@@ -55,7 +63,7 @@ async def lifespan(app: FastAPI):
         fetch_and_store_databricks, 
         'cron', 
         hour=3, 
-        minute=0, 
+        minute=30, 
         args=[app]
     )
 
@@ -91,16 +99,22 @@ app.add_middleware(
 class TeamRequest(BaseModel):
     fantasy_link: str
 
+class MatchupRequest(BaseModel):
+    league_id: str
+    team1: dict
+    team2: dict
+    week_num: int
+    date_start: str
+    roster_positions: list
+    stats_source: str
+    monte_carlo: bool = False
 
 @app.get("/")
 def home():
     return {"message": "Basketball API is running. Go to /docs"}
 
-
-
 @app.post("/analyze-team")
-async def analyze_team_link(request: TeamRequest):
-    
+def analyze_team_link(request: TeamRequest):
     received_link = request.fantasy_link
     print(f"DEBUG: Received link to scrape: {received_link}")
 
@@ -108,7 +122,34 @@ async def analyze_team_link(request: TeamRequest):
     league_id = link_split[-2]
     team_id = link_split[-1]
 
-    auth_path = Path("/app/auth")
+    yahoo_query = YahooFantasySportsQuery(
+        league_id=league_id,
+        game_code="nba",
+        offline=False,
+        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+        env_file_location= Path("/app/auth"),
+        save_token_data_to_env_file=False
+    )
+
+    league = FantasyLeague(yahoo_query, app.state.player_stats)
+    return {
+        "status": "success",
+        "message": "Link received!",
+        "payload": league.to_dict()
+    }
+
+@app.post("/matchup-analysis")
+def matchup_analysis_endpoint(request: MatchupRequest):
+    league_id = request.league_id
+    team1 = request.team1
+    team2 = request.team2
+    week_num = request.week_num
+    date_start = request.date_start
+    roster_positions = request.roster_positions
+    stats_source = request.stats_source
+    monte_carlo = request.monte_carlo
+    nba_schedule = app.state.nba_schedule
 
     yahoo_query = YahooFantasySportsQuery(
         league_id=league_id,
@@ -116,13 +157,17 @@ async def analyze_team_link(request: TeamRequest):
         offline=False,
         yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
         yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= auth_path,
+        env_file_location= Path("/app/auth"),
         save_token_data_to_env_file=False
     )
 
-    league = FantasyLeague(yahoo_query, app.state.player_stats_ema)
+    if monte_carlo:
+        results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
+    else:
+        results = run_matchup_analysis_calc(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
+
     return {
         "status": "success",
-        "message": "Link received!",
-        "payload": league.to_dict() # Placeholder for actual player stats later
+        "message": "Matchup analysis complete!",
+        "payload": results
     }

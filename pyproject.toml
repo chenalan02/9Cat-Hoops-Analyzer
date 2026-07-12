@@ -20,7 +20,8 @@ dependencies = [
     "yfpy (>=17.0.0,<18.0.0)",
     "databricks-sql-connector[pyarrow] (>=4.2.5,<5.0.0)",
     "apscheduler (>=3.11.2,<4.0.0)",
-    "pytz (>=2026.1.post1,<2027.0)"
+    "pytz (>=2026.1.post1,<2027.0)",
+    "pulp (>=3.3.1,<4.0.0)"
 ]
 
 
