@@ -162,9 +162,13 @@
   margin-bottom: 1.5rem;
 }
 
+.draft-page .section {
+  max-width: 1600px;
+}
+
 .draft-dashboard-grid {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
