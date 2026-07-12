@@ -150,9 +150,10 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
             # constraint 1: each player can only be assigned to 1 slot
             for player in team["players"]:
                 p_name = player['name']
+                clean_p_name = "".join(c if c.isalnum() or c == '_' else '_' for c in p_name.replace(' ', '_'))
                 prob += (
                     pulp.lpSum(choices[(p_name, slot)] for slot in roster_slots) == 1,
-                    f"Slot_{p_name.replace(' ', '_')}_one_slot" # Replacing spaces for cleaner PuLP logs
+                    f"Slot_{clean_p_name}_one_slot"
                 )
 
             # constraint 2: each slot can only be assigned to at most 1 player
@@ -207,9 +208,10 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
                         objective_terms.append(choices[(player_name, slot)] * weight)
 
                     else:
+                        clean_player_name = "".join(c if c.isalnum() or c == '_' else '_' for c in player_name.replace(' ', '_'))
                         prob += (
                             choices[(player_name, slot)] == 0,
-                            f"Eligibility_{player_name}_{slot}"
+                            f"Eligibility_{clean_player_name}_{slot}"
                         )
             
             prob += pulp.lpSum(objective_terms), "Total_Ranking_Score"
