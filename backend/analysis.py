@@ -76,12 +76,22 @@ def _get_league_roster_slots(roster_positions):
     active_slots = []
     inactive_slots = []
     for position in roster_positions:
-        if position.is_starting_position:
-            for i in range(position.count):
-                active_slots.append(position.position + "_" + str(i+1))
+        # Handle both dict (from API payload) and custom yfpy RosterPosition object
+        if isinstance(position, dict):
+            is_starting = position.get("is_starting_position", False)
+            count = position.get("count", 0)
+            pos_name = position.get("position", "")
         else:
-            for i in range(position.count):
-                inactive_slots.append(position.position + "_" + str(i+1))
+            is_starting = getattr(position, "is_starting_position", False)
+            count = getattr(position, "count", 0)
+            pos_name = getattr(position, "position", "")
+
+        if is_starting:
+            for i in range(count):
+                active_slots.append(pos_name + "_" + str(i+1))
+        else:
+            for i in range(count):
+                inactive_slots.append(pos_name + "_" + str(i+1))
 
     return active_slots, inactive_slots
 
