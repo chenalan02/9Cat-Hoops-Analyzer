@@ -147,7 +147,7 @@ export default function MatchupPage() {
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
-      setAnalysisResult(data);
+      setAnalysisResult(data.payload);
     } catch (err) {
       console.error('Matchup analysis failed:', err);
       setAnalysisError(err.message || 'Failed to fetch matchup analysis');
@@ -178,7 +178,7 @@ export default function MatchupPage() {
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
-      setMcResult(data);
+      setMcResult(data.payload);
     } catch (err) {
       console.error('Monte Carlo failed:', err);
       setMcError(err.message || 'Failed to run Monte Carlo simulation');
@@ -225,6 +225,10 @@ export default function MatchupPage() {
   }, [mcResult]);
 
   const mcMatchupWin = mcResult?.win_pcts?.matchup ?? null;
+
+  const inactivePlayers = useMemo(() => {
+    return mcResult?.inactive_players || analysisResult?.inactive_players || null;
+  }, [mcResult, analysisResult]);
 
   // ── Render ─────────────────────────────────────────────
   if (loading) return <div className="page-wrapper center-content"><div className="spinner" style={{ width: 36, height: 36 }} /></div>;
@@ -431,6 +435,62 @@ export default function MatchupPage() {
                 opp={{ mu: selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
                 winProb={selectedCatData.winProb}
               />
+            )}
+
+            {inactivePlayers && (
+              <div className="inactive-players-section card" style={{ marginTop: '2rem' }}>
+                <h3 style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  ⚠️ Inactive & Injured Players
+                </h3>
+                <p className="proj-subtitle" style={{ marginBottom: '1.25rem' }}>
+                  Players who are injured or projected to play 0 games this week (excluded from projections)
+                </p>
+                <div className="inactive-teams-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                  {/* Team 1 (You) */}
+                  <div className="inactive-team">
+                    <h4 style={{ color: 'var(--accent)', marginBottom: '0.75rem', fontSize: '0.9rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem' }}>
+                      {myTeam.name}
+                    </h4>
+                    {inactivePlayers.team1.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>No inactive players</p>
+                    ) : (
+                      <ul style={{ listStyle: 'none', padding: 0 }}>
+                        {inactivePlayers.team1.map(p => (
+                          <li key={p.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '4px' }}>
+                            <span><strong>{p.name}</strong></span>
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              Status: <span className={`badge ${p.status ? 'badge-red' : 'badge-orange'}`} style={{ marginRight: '0.5rem' }}>{p.status || 'Active (0 GP)'}</span>
+                              Proj Games: <strong>{p.proj_games_played ?? 0}</strong>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Team 2 (Opponent) */}
+                  <div className="inactive-team">
+                    <h4 style={{ color: '#ffa726', marginBottom: '0.75rem', fontSize: '0.9rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem' }}>
+                      {oppTeam.name}
+                    </h4>
+                    {inactivePlayers.team2.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontStyle: 'italic' }}>No inactive players</p>
+                    ) : (
+                      <ul style={{ listStyle: 'none', padding: 0 }}>
+                        {inactivePlayers.team2.map(p => (
+                          <li key={p.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '4px' }}>
+                            <span><strong>{p.name}</strong></span>
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              Status: <span className={`badge ${p.status ? 'badge-red' : 'badge-orange'}`} style={{ marginRight: '0.5rem' }}>{p.status || 'Active (0 GP)'}</span>
+                              Proj Games: <strong>{p.proj_games_played ?? 0}</strong>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

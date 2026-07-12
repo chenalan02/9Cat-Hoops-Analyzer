@@ -311,7 +311,21 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
 
         win_probs[f"{cat}%"] = sp.stats.norm.sf(0, loc=diff_eff_mu, scale=np.sqrt(diff_eff_var)) if diff_eff_var > 0 else 0.5
 
-    return {"win_probs": win_probs, "agg_dists": agg_dists}
+    # Collect players who are injured or projected to play 0 games
+    inactive_players = {"team1": [], "team2": []}
+    for team_key, team in [("team1", team1), ("team2", team2)]:
+        for player in team["players"]:
+            player_stats = player.get(stats_source, {}) or {}
+            is_injured = player.get("status") is not None and player.get("status") != ""
+            is_zero_games = player_stats.get("proj_games_played") is None
+            if is_injured or is_zero_games:
+                inactive_players[team_key].append({
+                    "name": player.get("name"),
+                    "status": player.get("status"),
+                    "proj_games_played": player_stats.get("proj_games_played")
+                })
+
+    return {"win_probs": win_probs, "agg_dists": agg_dists, "inactive_players": inactive_players}
 
 
 def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule, n_sims=10000):
@@ -430,4 +444,18 @@ def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start
         for team in ["team1", "team2"]
     }   
 
-    return {"win_pcts": win_pcts, "sim_avg": sim_avg}
+    # Collect players who are injured or projected to play 0 games
+    inactive_players = {"team1": [], "team2": []}
+    for team_key, team in [("team1", team1), ("team2", team2)]:
+        for player in team["players"]:
+            player_stats = player.get(stats_source, {}) or {}
+            is_injured = player.get("status") is not None and player.get("status") != ""
+            is_zero_games = player_stats.get("proj_games_played") is None
+            if is_injured or is_zero_games:
+                inactive_players[team_key].append({
+                    "name": player.get("name"),
+                    "status": player.get("status"),
+                    "proj_games_played": player_stats.get("proj_games_played")
+                })
+
+    return {"win_pcts": win_pcts, "sim_avg": sim_avg, "inactive_players": inactive_players}
