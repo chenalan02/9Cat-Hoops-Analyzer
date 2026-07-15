@@ -392,7 +392,20 @@ export default function MatchupPage() {
         {/* Monte Carlo Result */}
         {mcResult && mcMatchupWin !== null && (
           <div className="sim-result card fade-up">
-            <h3 style={{ marginBottom: '1rem' }}>🎲 Monte Carlo Results</h3>
+            <h3 style={{ marginBottom: '0.5rem' }}>🎲 Monte Carlo Simulation Results</h3>
+
+            <div className="mc-explanation" style={{
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
+              lineHeight: '1.45',
+              marginBottom: '1.5rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(255, 255, 255, 0.02)',
+              borderLeft: '3px solid var(--accent)',
+              borderRadius: '0 4px 4px 0'
+            }}>
+              <strong>How it works:</strong> The Monte Carlo simulation runs 10,000 randomized trials of the matchup week. In each trial, players' daily performances are randomly sampled and the daily optimal lineups are solved. Unlike the <strong>Analytical Projections</strong> (which use formula-based approximations of weekly totals), the simulation models the day-to-day lineup constraints, bench limits, and schedule variations.
+            </div>
 
             {/* Overall matchup win rate */}
             <div className="mc-matchup-highlight">
@@ -402,7 +415,7 @@ export default function MatchupPage() {
               >
                 {Math.round(mcMatchupWin * 100)}%
               </div>
-              <div className="mc-matchup-label">Overall Matchup Win Rate</div>
+              <div className="mc-matchup-label">Simulated Matchup Win %</div>
             </div>
 
             {/* Per-category MC win rates */}
@@ -415,7 +428,10 @@ export default function MatchupPage() {
                   return (
                     <div className="mc-cat-card" key={cat.key}>
                       <div className="mc-cat-label">{cat.key}</div>
-                      <div className="mc-cat-pct" style={{ color }}>{formatPct(winPct)}</div>
+                      <div className="mc-cat-pct" style={{ color }}>
+                        {formatPct(winPct)}
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500, textTransform: 'uppercase', marginTop: '2px' }}>Sim Win %</span>
+                      </div>
                       <div className="mc-cat-bar">
                         <div className="mc-cat-bar-fill" style={{ width: `${winPct * 100}%`, background: color }} />
                       </div>
@@ -431,10 +447,9 @@ export default function MatchupPage() {
           </div>
         )}
 
-        {/* Category odds grid (from non-MC analysis) */}
         {odds && !analysisLoading && (
           <div style={{ marginTop: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem', fontWeight: 700 }}>Category Breakdown</h3>
+            <h3 style={{ marginBottom: '1rem', fontWeight: 700 }}>📊 Analytical Projections & Category Breakdown</h3>
             <div className="odds-grid">
               {odds.map(({ cat, myMu, oppMu, winProb }) => {
                 const color = winProb >= 0.6 ? 'var(--accent)'
@@ -447,7 +462,10 @@ export default function MatchupPage() {
                     onClick={() => setActiveCatKey(cat.key)}
                   >
                     <div className="odds-cat">{cat.icon} {cat.label}</div>
-                    <div className="odds-pct" style={{ color }}>{formatPct(winProb)}</div>
+                    <div className="odds-pct" style={{ color }}>
+                      {formatPct(winProb)}
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500, textTransform: 'uppercase', marginTop: '2px' }}>Estimated Win Prob</span>
+                    </div>
                     <div className="odds-bar">
                       <div
                         className="odds-bar-fill"
