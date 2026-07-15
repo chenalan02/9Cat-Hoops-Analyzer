@@ -540,3 +540,35 @@
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 }
+
+/* --- Draft Table Compact Overrides for Screen Fit --- */
+.draft-table {
+  font-size: 0.78rem;
+}
+
+.draft-table th {
+  padding: 8px 6px;
+  font-size: 0.65rem;
+  letter-spacing: 0.3px;
+}
+
+.draft-table td {
+  padding: 6px 6px;
+}
+
+.draft-table .draft-action-btn {
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  border-radius: 4px;
+}
+
+.draft-table .player-cell {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-table .player-name {
+  font-size: 0.78rem;
+}
