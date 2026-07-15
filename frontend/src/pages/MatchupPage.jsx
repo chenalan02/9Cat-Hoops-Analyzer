@@ -96,10 +96,18 @@ export default function MatchupPage() {
   // ── Opponent selection ─────────────────────────────────
   const [oppTeamId, setOppTeamId]       = useState('');
   const [activeCatKey, setActiveCatKey] = useState('PTS');
+  const [showOverrides, setShowOverrides] = useState(false);
 
   // ── Week / date controls ───────────────────────────────
   const [weekNum, setWeekNum]   = useState(() => leagueData?.week_num ?? 1);
   const [dateStart, setDateStart] = useState(todayString);
+
+  // Sync weekNum when leagueData loads/changes
+  useEffect(() => {
+    if (leagueData?.week_num) {
+      setWeekNum(leagueData.week_num);
+    }
+  }, [leagueData]);
 
   // ── Analysis state (non-Monte Carlo) ───────────────────
   const [analysisResult, setAnalysisResult]   = useState(null);
@@ -281,40 +289,67 @@ export default function MatchupPage() {
           </div>
 
           {/* Week / Date controls */}
-          <div className="matchup-controls">
-            <label className="matchup-control-label">
-              <span>Matchup Week</span>
-              <input
-                type="number"
-                min="1"
-                max="30"
-                value={weekNum}
-                onChange={e => setWeekNum(parseInt(e.target.value) || 1)}
-                className="matchup-input"
-                aria-label="Matchup week number"
-              />
-            </label>
-            <label className="matchup-control-label">
-              <span>Start Date</span>
-              <input
-                type="date"
-                value={dateStart}
-                onChange={e => setDateStart(e.target.value)}
-                className="matchup-input"
-                aria-label="Matchup start date"
-              />
-            </label>
-            {oppTeam && (
+          <div className="matchup-controls" style={{ display: 'flex', gap: '2rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '2rem' }}>
+              <div>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Matchup Week</span>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--text-primary)' }}>Week {weekNum}</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Start Date</span>
+                <strong style={{ fontSize: '1.2rem', color: 'var(--text-primary)' }}>{dateStart}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
               <button
                 className="btn-secondary"
-                onClick={fetchAnalysis}
-                disabled={analysisLoading}
-                style={{ alignSelf: 'flex-end' }}
+                onClick={() => setShowOverrides(!showOverrides)}
+                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
               >
-                {analysisLoading ? <><span className="spinner" /> Refreshing…</> : '🔄 Re-analyze'}
+                {showOverrides ? '⚙️ Hide Overrides' : '⚙️ Manual Overrides'}
               </button>
-            )}
+              {oppTeam && (
+                <button
+                  className="btn-primary"
+                  onClick={fetchAnalysis}
+                  disabled={analysisLoading}
+                  style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+                >
+                  {analysisLoading ? <><span className="spinner" /> Refreshing…</> : '🔄 Re-analyze'}
+                </button>
+              )}
+            </div>
           </div>
+
+          {showOverrides && (
+            <div className="card fade-up" style={{ marginTop: '1.5rem', padding: '1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border)' }}>
+              <h4 style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--accent)', marginTop: 0 }}>⚙️ Manual Overrides</h4>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                <label className="matchup-control-label" style={{ flex: 1, minWidth: '150px' }}>
+                  <span>Override Matchup Week</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={weekNum}
+                    onChange={e => setWeekNum(parseInt(e.target.value) || 1)}
+                    className="matchup-input"
+                    aria-label="Override matchup week number"
+                  />
+                </label>
+                <label className="matchup-control-label" style={{ flex: 1, minWidth: '150px' }}>
+                  <span>Override Start Date</span>
+                  <input
+                    type="date"
+                    value={dateStart}
+                    onChange={e => setDateStart(e.target.value)}
+                    className="matchup-input"
+                    aria-label="Override matchup start date"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Analysis loading / error */}
           {analysisLoading && (
