@@ -195,12 +195,19 @@ export default function DraftPage() {
     return CATEGORIES.filter(c => !puntedCats.has(c.key));
   }, [puntedCats]);
 
-  // Compute dynamic player scores based on punt strategy
+  // Compute dynamic player scores and overall ranks based on punt strategy
   const rankedPlayers = useMemo(() => {
-    return allPlayers.map(p => {
+    const withAvgZ = allPlayers.map(p => {
       const activeZs = activeCats.map(c => p.zScores[c.key]).filter(z => z !== null);
       const avgZ = activeZs.length ? activeZs.reduce((a, b) => a + b, 0) / activeZs.length : -999;
       return { ...p, avgZ };
+    });
+
+    const sortedByVal = [...withAvgZ].sort((a, b) => b.avgZ - a.avgZ);
+
+    return withAvgZ.map(p => {
+      const overallRank = sortedByVal.findIndex(x => x.name === p.name) + 1;
+      return { ...p, overallRank };
     });
   }, [allPlayers, activeCats]);
 
@@ -811,7 +818,13 @@ export default function DraftPage() {
               <table className="data-table draft-table" aria-label="Available player rankings">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'center', width: 50 }}>Rank</th>
+                    <th
+                      className={sortKey === 'avgZ' ? 'sort-active' : ''}
+                      onClick={() => handleSort('avgZ')}
+                      style={{ textAlign: 'center', width: 50, cursor: 'pointer' }}
+                    >
+                      Rank <SortIcon col="avgZ" />
+                    </th>
                     <th
                       className={sortKey === 'name' ? 'sort-active' : ''}
                       onClick={() => handleSort('name')}
@@ -844,7 +857,7 @@ export default function DraftPage() {
                   {sortedList.length > 0 ? (
                     sortedList.map((player, idx) => (
                       <tr key={player.name}>
-                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)' }}>{idx + 1}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)' }}>{player.overallRank}</td>
                         <td>
                           <div className="player-cell">
                             <span className="player-name">{player.name}</span>
