@@ -96,6 +96,24 @@ def _get_league_roster_slots(roster_positions):
     return active_slots, inactive_slots
 
 
+def _get_safe_player_stats(player_info, stats_source):
+    stats = player_info.get(stats_source, {}) or {}
+    defaults = {
+        "rank": 999,
+        "proj_games_played": None,
+    }
+    for stat in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]:
+        defaults[f"mu_{stat}"] = 0.0
+        defaults[f"var_{stat}"] = 0.0
+    for stat in ["fg", "ft"]:
+        defaults[f"mu_{stat}a"] = 0.0
+        defaults[f"var_{stat}a"] = 0.0
+        defaults[f"mu_{stat}m"] = 0.0
+        defaults[f"var_{stat}m"] = 0.0
+    
+    return {**defaults, **{k: v for k, v in stats.items() if v is not None}}
+
+
 def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule):
     '''
     Get game schedule for the week for both teams, then solve for the optimal lineup based on player stats and roster positions.
@@ -193,7 +211,7 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
                 player_name = player_info['name']
                 player_positions = player_info['positions']
                 player_status = player_info['status']
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
                 game_scheduled = player_name in players_with_game
 
                 player_rank_score = 1000 - player_stats['rank']
@@ -264,7 +282,7 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
         for date, lineup in optimal_lineups[team_num].items():
             for slot, player_name in lineup.items():
                 player_info = players_dict[player_name]
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
 
                 if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
 
@@ -310,12 +328,12 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
 
         # Delta Method variance formula
         if team1_a_mu > 0:
-            team1_eff_var = (team1_m_var / (team1_a_mu ** 2)) - (((team1_m_mu ** 2) * team1_a_var) / (team1_a_mu ** 4))
+            team1_eff_var = (team1_m_var / (team1_a_mu ** 2)) + (((team1_m_mu ** 2) * team1_a_var) / (team1_a_mu ** 4))
         else:
             team1_eff_var = 0
             
         if team2_a_mu > 0:
-            team2_eff_var = (team2_m_var / (team2_a_mu ** 2)) - (((team2_m_mu ** 2) * team2_a_var) / (team2_a_mu ** 4))
+            team2_eff_var = (team2_m_var / (team2_a_mu ** 2)) + (((team2_m_mu ** 2) * team2_a_var) / (team2_a_mu ** 4))
         else:
             team2_eff_var = 0
 
@@ -379,7 +397,7 @@ def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start
             sim_agg[team][date] = {}
             for slot, player_name in lineup.items():
                 player_info = players_dict[player_name]
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
 
                 if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
                     # negative binomial sim for counting stats, poisson if not overdispersed
