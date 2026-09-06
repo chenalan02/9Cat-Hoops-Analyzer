@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>9-Cat Draft Analyzer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="popup-header">
+      <div class="brand">
+        <span class="badge">9-CAT</span>
+        <h2>Draft Analyzer</h2>
+      </div>
+      <span class="status-dot connected" id="status-dot" title="Extension active"></span>
+    </div>
+
+    <div class="popup-section">
+      <label class="section-label">Backend API URL</label>
+      <div class="input-group">
+        <input type="text" id="backend-url-input" value="http://localhost:8000" placeholder="http://localhost:8000" />
+        <button id="test-backend-btn" class="secondary-btn">Test</button>
+      </div>
+      <div id="backend-status-msg" class="status-msg"></div>
+    </div>
+
+    <div class="popup-section">
+      <label class="section-label">Yahoo League Link (Optional)</label>
+      <input type="text" id="league-link-input" placeholder="https://basketball.fantasysports.yahoo.com/nba/123456" />
+      <button id="sync-league-btn" class="primary-btn mt-2">Sync League Teams</button>
+    </div>
+
+    <div class="popup-section">
+      <label class="section-label">Draft Controls</label>
+      <button id="reset-draft-btn" class="danger-btn">Reset Drafted Players</button>
+    </div>
+
+    <div class="popup-footer">
+      <span>9-Cat Hoops Analyzer v1.0.0</span>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
