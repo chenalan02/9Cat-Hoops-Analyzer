@@ -53,8 +53,20 @@ def fetch_and_store_databricks(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Default initial state attributes with required key dicts
+    app.state.player_stats = {
+        "ema": {},
+        "ros_rankings": {},
+        "weekly_rankings": {},
+        "preseason_rankings": {}
+    }
+    app.state.nba_schedule = None
+
     # Run on startup
-    fetch_and_store_databricks(app)
+    try:
+        fetch_and_store_databricks(app)
+    except Exception as e:
+        print(f"[{datetime.datetime.now()}] Databricks startup fetch failed: {e}")
     
     # run daily
     eastern = pytz.timezone('America/Toronto')
@@ -115,29 +127,46 @@ def home():
 
 @app.post("/analyze-team")
 def analyze_team_link(request: TeamRequest):
-    received_link = request.fantasy_link
+    received_link = request.fantasy_link.strip()
     print(f"DEBUG: Received link to scrape: {received_link}")
 
-    link_split = received_link.split("/")
-    league_id = link_split[-2]
-    team_id = link_split[-1]
+    # Robust URL parser using Regex for Yahoo Fantasy URLs (e.g. .../nba/3742 or .../nba/3742/1)
+    match = re.search(r'/nba/(\d+)(?:/(\d+))?', received_link)
+    if match:
+        league_id = match.group(1)
+        team_id = match.group(2) if match.group(2) else "1"
+    else:
+        # Fallback to simple split if non-standard URL
+        clean_parts = [p for p in received_link.split("/") if p]
+        league_id = clean_parts[-2] if len(clean_parts) >= 2 else clean_parts[-1]
+        team_id = clean_parts[-1] if len(clean_parts) >= 2 else "1"
 
-    yahoo_query = YahooFantasySportsQuery(
-        league_id=league_id,
-        game_code="nba",
-        offline=False,
-        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
-        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= Path("/app/auth"),
-        save_token_data_to_env_file=False
-    )
+    print(f"DEBUG: Parsed League ID: {league_id}, Team ID: {team_id}")
 
-    league = FantasyLeague(yahoo_query, app.state.player_stats)
-    return {
-        "status": "success",
-        "message": "Link received!",
-        "payload": league.to_dict()
-    }
+    try:
+        yahoo_query = YahooFantasySportsQuery(
+            league_id=league_id,
+            game_code="nba",
+            offline=False,
+            yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+            yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+            env_file_location= Path("/app/auth"),
+            save_token_data_to_env_file=True
+        )
+
+        league = FantasyLeague(yahoo_query, app.state.player_stats)
+        return {
+            "status": "success",
+            "message": "Live league data retrieved successfully!",
+            "payload": league.to_dict()
+        }
+    except Exception as e:
+        print(f"ERROR: Yahoo Fantasy API query failed for league {league_id}: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Yahoo Fantasy API Error: {str(e)}. (Note: Ensure your Yahoo OAuth session is authenticated and you have access to this league).",
+            "payload": None
+        }
 
 @app.post("/matchup-analysis")
 def matchup_analysis_endpoint(request: MatchupRequest):
@@ -151,15 +180,18 @@ def matchup_analysis_endpoint(request: MatchupRequest):
     monte_carlo = request.monte_carlo
     nba_schedule = app.state.nba_schedule
 
-    yahoo_query = YahooFantasySportsQuery(
-        league_id=league_id,
-        game_code="nba",
-        offline=False,
-        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
-        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= Path("/app/auth"),
-        save_token_data_to_env_file=False
-    )
+    try:
+        yahoo_query = YahooFantasySportsQuery(
+            league_id=league_id,
+            game_code="nba",
+            offline=False,
+            yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+            yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+            env_file_location= Path("/app/auth"),
+            save_token_data_to_env_file=True
+        )
+    except Exception:
+        yahoo_query = None
 
     if monte_carlo:
         results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)

@@ -34,9 +34,9 @@ export function useTeamData() {
     setLoading(true);
     setError(null);
 
-    // Parse team_id from Yahoo link
-    const parts = linkVal.split('/');
-    const parsedTeamId = parseInt(parts[parts.length - 1]) || 1;
+    // Parse team_id from Yahoo link (default to 1 if league URL without team ID)
+    const match = linkVal.match(/\/nba\/(\d+)(?:\/(\d+))?/);
+    const parsedTeamId = match && match[2] ? parseInt(match[2], 10) : 1;
 
     try {
       const response = await fetch('/api/analyze-team', {
@@ -64,7 +64,7 @@ export function useTeamData() {
 
     } catch (err) {
       console.error('Failed to analyze team:', err.message);
-      setError('Invalid link or server unavailable. Please check that your Yahoo Fantasy link is correct and try again.');
+      setError(err.message || 'Invalid link or server unavailable. Please check that your Yahoo Fantasy link is correct and try again.');
       setLeagueData(null);
       setMyTeamId(null);
       setFantasyLink('');

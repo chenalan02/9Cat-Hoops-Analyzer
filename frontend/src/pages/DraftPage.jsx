@@ -185,6 +185,22 @@ export default function DraftPage() {
     }
   }, [leagueData, myTeam]);
 
+  // Listen for real-time live picks from Chrome Extension (BroadcastChannel)
+  useEffect(() => {
+    const syncChannel = new BroadcastChannel('9cat_hoops_draft_sync');
+    syncChannel.onmessage = (event) => {
+      if (event.data?.type === 'DRAFT_PICK' && event.data?.playerName) {
+        const name = event.data.playerName;
+        setDraftHistory(prev => {
+          if (prev.some(item => item.player.name.toLowerCase() === name.toLowerCase())) return prev;
+          const found = allPlayers.find(p => p.name.toLowerCase() === name.toLowerCase()) || { name };
+          return [...prev, { player: found, teamId: 1, teamName: 'Drafted', pickNumber: prev.length + 1 }];
+        });
+      }
+    };
+    return () => syncChannel.close();
+  }, [allPlayers]);
+
   // Compute player pools
   const allPlayers = useMemo(() => {
     return leagueData?.teams ? computeDraftZScores(buildDraftPool(leagueData.teams)) : [];
@@ -268,18 +284,13 @@ export default function DraftPage() {
   const recommendations = useMemo(() => {
     if (!draftStarted || undraftedPlayers.length === 0) return [];
 
-    // Early rounds: recommend best overall z-score players
-    if (userRoster.length < 2) {
-      return undraftedPlayers
-        .slice(0, 3)
-        .map(p => ({
-          player: p,
-          score: p.avgZ,
-          reason: `Best overall available player (Round ${round})`
-        }));
-    }
+    // Base roster category averages for team deficit calculation
+    const currentRosterAvg = {};
+    activeCats.forEach(cat => {
+      const vals = userRoster.map(p => p.zScores?.[cat.key]).filter(z => z !== null && z !== undefined);
+      currentRosterAvg[cat.key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    });
 
-    // Later rounds: calculate dynamic smart score based on punt strategy, team needs, and scarcity
     const slots = rosterSlots;
     const filled = { PG: 0, SG: 0, SF: 0, PF: 0, C: 0, G: 0, F: 0, Util: 0, Bench: 0 };
     userRoster.forEach(p => {
@@ -290,54 +301,54 @@ export default function DraftPage() {
     const needsG = filled['PG'] < slots['PG'] || filled['SG'] < slots['SG'] || filled['G'] < slots['G'];
     const needsF = filled['SF'] < slots['SF'] || filled['PF'] < slots['PF'] || filled['F'] < slots['F'];
 
-    // Check if team needs specific categories (e.g. low team averages in active categories)
-    const categoryStats = {};
-    activeCats.forEach(cat => {
-      categoryStats[cat.key] = userRoster.reduce((s, p) => s + (p.zScores[cat.key] ?? 0), 0) / userRoster.length;
-    });
-
-    const needBLK = !puntedCats.has('BLK') && categoryStats['BLK'] < -0.2;
-    const needAST = !puntedCats.has('AST') && categoryStats['AST'] < -0.2;
-    const needFT = !puntedCats.has('FT%') && categoryStats['FT%'] < -0.2;
-
     const scoredList = undraftedPlayers.map(p => {
       let score = p.avgZ;
-      let reason = 'Fits punt strategy';
+      let reason = 'Fits overall punt build';
       const posList = (p.positions ?? '').split(',').map(s => s.trim());
 
       // 1. Team Position need bonus
       if (needsC && posList.includes('C')) {
         score += 0.45;
-        reason = 'Fills critical Center slot';
+        reason = '🛡️ Fill Center Slot Need';
       } else if (needsG && (posList.includes('PG') || posList.includes('SG'))) {
         score += 0.25;
-        reason = 'Fills Guard position need';
+        reason = '🎯 Fill Guard Need';
       } else if (needsF && (posList.includes('SF') || posList.includes('PF'))) {
         score += 0.25;
-        reason = 'Fills Forward position need';
+        reason = '⚡ Fill Forward Need';
       }
 
-      // 2. Scarcity bonuses
+      // 2. Category Need Scarcity & Synergy Bonuses
       const isGuard = posList.includes('PG') || posList.includes('SG');
       const isCenter = posList.includes('C');
 
-      if (needBLK && isGuard && p.zScores?.['BLK'] > 0.5) {
+      if (!puntedCats.has('BLK') && currentRosterAvg['BLK'] < -0.2 && isGuard && (p.zScores?.['BLK'] ?? 0) > 0.4) {
         score += 0.4;
-        reason = 'Rare blocking Guard';
-      }
-      if (needAST && isCenter && p.zScores?.['AST'] > 0.5) {
+        reason = '🔥 Rare Blocking Guard';
+      } else if (!puntedCats.has('AST') && currentRosterAvg['AST'] < -0.2 && isCenter && (p.zScores?.['AST'] ?? 0) > 0.4) {
         score += 0.4;
-        reason = 'Rare passing Center';
-      }
-      if (needFT && isCenter && p.zScores?.['FT%'] > 0.5) {
-        score += 0.3;
-        reason = 'High efficiency FT% Center';
+        reason = '🔥 Rare Passing Center';
+      } else if (!puntedCats.has('FT%') && currentRosterAvg['FT%'] < -0.2 && isCenter && (p.zScores?.['FT%'] ?? 0) > 0.4) {
+        score += 0.35;
+        reason = '🔥 High FT% Center';
+      } else if (userRoster.length < 2) {
+        reason = `🌟 Best Available Player (Round ${round})`;
       }
 
-      return { player: p, score, reason };
+      // 3. Category Delta Preview (Top 2 categories player boosts most)
+      const topCatDeltas = activeCats
+        .map(cat => ({
+          catKey: cat.key,
+          zVal: p.zScores?.[cat.key] ?? 0
+        }))
+        .filter(c => c.zVal > 0.3)
+        .sort((a, b) => b.zVal - a.zVal)
+        .slice(0, 2);
+
+      return { player: p, score, reason, topCatDeltas };
     });
 
-    return scoredList.sort((a, b) => b.score - a.score).slice(0, 3);
+    return scoredList.sort((a, b) => b.score - a.score).slice(0, 4);
   }, [undraftedPlayers, userRoster, rosterSlots, activeCats, puntedCats, draftStarted, round]);
 
   // Punt Sleeper Picks (players whose value increases most under punt strategy)
@@ -347,15 +358,15 @@ export default function DraftPage() {
     // Calculate baseline z-scores (all categories active)
     const scoredSleepers = undraftedPlayers
       .map(p => {
-        const allZs = CATEGORIES.map(c => p.zScores[c.key]).filter(z => z !== null);
+        const allZs = CATEGORIES.map(c => p.zScores?.[c.key]).filter(z => z !== null && z !== undefined);
         const baselineAvg = allZs.length ? allZs.reduce((a, b) => a + b, 0) / allZs.length : 0;
-        const improvement = p.avgZ - baselineAvg;
+        const improvement = (p.avgZ ?? 0) - baselineAvg;
 
         // Find baseline rank in original allPlayers pool
         const baselineRank = [...allPlayers]
           .sort((a, b) => {
-            const sumA = CATEGORIES.map(c => a.zScores[c.key]).filter(z => z !== null).reduce((x, y) => x + y, 0);
-            const sumB = CATEGORIES.map(c => b.zScores[c.key]).filter(z => z !== null).reduce((x, y) => x + y, 0);
+            const sumA = CATEGORIES.map(c => a.zScores?.[c.key]).filter(z => z !== null && z !== undefined).reduce((x, y) => x + y, 0);
+            const sumB = CATEGORIES.map(c => b.zScores?.[c.key]).filter(z => z !== null && z !== undefined).reduce((x, y) => x + y, 0);
             return sumB - sumA;
           })
           .findIndex(x => x.name === p.name) + 1;
@@ -363,8 +374,8 @@ export default function DraftPage() {
         // Find active punt rank in original pool
         const puntRank = [...allPlayers]
           .sort((a, b) => {
-            const sumA = activeCats.map(c => a.zScores[c.key]).filter(z => z !== null).reduce((x, y) => x + y, 0);
-            const sumB = activeCats.map(c => b.zScores[c.key]).filter(z => z !== null).reduce((x, y) => x + y, 0);
+            const sumA = activeCats.map(c => a.zScores?.[c.key]).filter(z => z !== null && z !== undefined).reduce((x, y) => x + y, 0);
+            const sumB = activeCats.map(c => b.zScores?.[c.key]).filter(z => z !== null && z !== undefined).reduce((x, y) => x + y, 0);
             return sumB - sumA;
           })
           .findIndex(x => x.name === p.name) + 1;
@@ -678,7 +689,7 @@ export default function DraftPage() {
               {/* Recommended Picks */}
               <div className="recommendations-list">
                 {recommendations.length > 0 ? (
-                  recommendations.map(({ player, score, reason }) => (
+                  recommendations.map(({ player, score, reason, topCatDeltas }) => (
                     <div key={player.name} className="rec-item">
                       <div className="rec-top">
                         <span className="rec-name" onClick={() => setSearchQuery(player.name)}>
@@ -696,6 +707,15 @@ export default function DraftPage() {
                         <span className="rec-pos">{player.positions}</span>
                         <span className="rec-badge">{reason}</span>
                       </div>
+                      {topCatDeltas && topCatDeltas.length > 0 && (
+                        <div className="rec-deltas">
+                          {topCatDeltas.map(d => (
+                            <span key={d.catKey} className="delta-chip">
+                              +{d.zVal.toFixed(1)} {d.catKey}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (

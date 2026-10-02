@@ -16,7 +16,7 @@ const CATEGORIES = [
 ];
 
 function isValidYahooLink(url) {
-  return /basketball\.fantasysports\.yahoo\.com\/nba\/\d+\/\d+/.test(url);
+  return /basketball\.fantasysports\.yahoo\.com\/nba\/\d+(?:\/\d+)?/.test(url);
 }
 
 export default function HomePage() {
@@ -74,7 +74,7 @@ export default function HomePage() {
             <input
               id="team-link-input"
               type="url"
-              placeholder="https://basketball.fantasysports.yahoo.com/nba/00000/0"
+              placeholder="https://basketball.fantasysports.yahoo.com/nba/"
               value={link}
               onChange={e => { setLink(e.target.value); setError(''); }}
               onKeyDown={handleKey}

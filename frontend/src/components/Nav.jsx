@@ -8,6 +8,7 @@ const LINKS = [
   { to: '/matchup',         label: 'Matchup'              },
   { to: '/trade',           label: 'Trade'                },
   { to: '/draft',           label: 'Draft'                },
+  { to: '/streamers',       label: 'Streamers'            },
   { to: '/info',            label: 'Info'                 },
 ];
 

@@ -1,0 +1,305 @@
+/* Streamer Recommendations Page CSS */
+.streamer-page {
+  padding-bottom: 3rem;
+}
+
+.streamer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.streamer-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--text-primary, #ffffff);
+  margin-bottom: 0.25rem;
+}
+
+.streamer-subtitle {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.95rem;
+}
+
+.streamer-controls-card {
+  padding: 1.5rem;
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.control-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 0.5rem;
+}
+
+.cat-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cat-chip {
+  background: rgba(51, 65, 85, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cat-chip:hover {
+  background: rgba(71, 85, 105, 0.8);
+  color: #ffffff;
+}
+
+.cat-chip.active {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.control-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.control-subgroup {
+  flex: 1;
+  min-width: 220px;
+}
+
+.day-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.day-chip {
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.day-chip.active {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+}
+
+.day-chip.off-day-chip {
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fbbf24;
+}
+
+.games-btn-group {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.game-btn {
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.game-btn.active {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.streamer-search-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  color: #ffffff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.streamer-search-input:focus {
+  border-color: #6366f1;
+}
+
+/* Streamer Cards Grid */
+.streamer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem;
+}
+
+.streamer-card {
+  padding: 1.25rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.streamer-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.streamer-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.rank-badge {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.4rem;
+}
+
+.player-name-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+  display: inline;
+}
+
+.player-sub-text {
+  display: block;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+}
+
+.score-badge {
+  text-align: right;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+}
+
+.score-label {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #34d399;
+  font-weight: 700;
+}
+
+.score-val {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #34d399;
+}
+
+/* Schedule Bar */
+.schedule-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+}
+
+.schedule-title {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.day-badges {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.day-tag {
+  background: rgba(51, 65, 85, 0.8);
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.day-tag.off-day-tag {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+/* Impact Section */
+.impact-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.impact-title {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.impact-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.impact-chip {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.cat-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.cat-val {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.empty-streamer-box {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: #94a3b8;
+}

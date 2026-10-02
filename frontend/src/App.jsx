@@ -8,6 +8,7 @@ import MatchupPage from './pages/MatchupPage.jsx';
 import InfoPage from './pages/InfoPage.jsx';
 import DraftPage from './pages/DraftPage.jsx';
 import TradePage from './pages/TradePage.jsx';
+import StreamerPage from './pages/StreamerPage.jsx';
 import { useTeamData } from './hooks/useTeamData.js';
 
 export const TeamDataContext = createContext(null);
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/matchup"         element={<MatchupPage />} />
           <Route path="/draft"           element={<DraftPage />} />
           <Route path="/trade"           element={<TradePage />} />
+          <Route path="/streamers"       element={<StreamerPage />} />
           <Route path="/info"            element={<InfoPage />} />
           {/* Catch-all */}
           <Route path="*" element={<HomePage />} />

@@ -9,64 +9,70 @@ def _get_live_team_stats(yahoo_query, team_id, week_num):
     Makes a single raw API call to extract ALL 9-cat stats for a team, 
     mapping standard categories and splitting the raw FGM/FGA and FTM/FTA strings.
     '''
-    team_key = f"{yahoo_query.get_league_key()}.t.{team_id}"
-    url = f"https://fantasysports.yahooapis.com/fantasy/v2/team/{team_key}/stats;type=week;week={week_num}"
+    if not yahoo_query:
+        return {}, False
+    try:
+        team_key = f"{yahoo_query.get_league_key()}.t.{team_id}"
+        url = f"https://fantasysports.yahooapis.com/fantasy/v2/team/{team_key}/stats;type=week;week={week_num}"
 
-    # Fetch the Response object and call .json() to turn it into a dictionary
-    response_obj = yahoo_query.get_response(url)
-    raw_data = response_obj.json()
+        # Fetch the Response object and call .json() to turn it into a dictionary
+        response_obj = yahoo_query.get_response(url)
+        raw_data = response_obj.json()
 
-    stats_list = raw_data["fantasy_content"]["team"][1]["team_stats"]["stats"]
+        stats_list = raw_data["fantasy_content"]["team"][1]["team_stats"]["stats"]
 
-    # Map Yahoo's integer IDs to your simulator's string keys
-    yahoo_stat_map = {
-        "12": "pts",
-        "15": "reb",
-        "16": "ast",
-        "17": "stl",
-        "18": "blk",
-        "19": "tov",
-        "10": "fg3m",
-    }
+        # Map Yahoo's integer IDs to your simulator's string keys
+        yahoo_stat_map = {
+            "12": "pts",
+            "15": "reb",
+            "16": "ast",
+            "17": "stl",
+            "18": "blk",
+            "19": "tov",
+            "10": "fg3m",
+        }
 
-    live_stats = {}
-    live_games = raw_data['fantasy_content']['team'][1]['team_remaining_games']['total']['live_games'] > 0
+        live_stats = {}
+        live_games = raw_data['fantasy_content']['team'][1]['team_remaining_games']['total']['live_games'] > 0
 
-    for item in stats_list:
-        if "stat" not in item:
-            continue
+        for item in stats_list:
+            if "stat" not in item:
+                continue
 
-        stat_id = str(item["stat"]["stat_id"])
-        value = item["stat"]["value"]
+            stat_id = str(item["stat"]["stat_id"])
+            value = item["stat"]["value"]
 
-        # 1. Handle the string splits for efficiency volume
-        if stat_id == "9004003" and value != "0":
-            fgm, fga = value.split("/")
-            live_stats["fgm"] = float(fgm)
-            live_stats["fga"] = float(fga)
+            # 1. Handle the string splits for efficiency volume
+            if stat_id == "9004003" and value != "0":
+                fgm, fga = value.split("/")
+                live_stats["fgm"] = float(fgm)
+                live_stats["fga"] = float(fga)
 
-        elif stat_id == "9007006" and value != "0":
-            ftm, fta = value.split("/")
-            live_stats["ftm"] = float(ftm)
-            live_stats["fta"] = float(fta)
+            elif stat_id == "9007006" and value != "0":
+                ftm, fta = value.split("/")
+                live_stats["ftm"] = float(ftm)
+                live_stats["fta"] = float(fta)
 
-        # 2. Handle the standard 9 categories
-        elif stat_id in yahoo_stat_map:
-            cat_name = yahoo_stat_map[stat_id]
+            # 2. Handle the standard 9 categories
+            elif stat_id in yahoo_stat_map:
+                cat_name = yahoo_stat_map[stat_id]
 
-            # Yahoo occasionally returns a dash ("-") or empty string if a team 
-            # literally has 0 stats in a category early in the week.
-            try:
-                live_stats[cat_name] = float(value)
-            except ValueError:
-                live_stats[cat_name] = 0.0
+                # Yahoo occasionally returns a dash ("-") or empty string if a team 
+                # literally has 0 stats in a category early in the week.
+                try:
+                    live_stats[cat_name] = float(value)
+                except ValueError:
+                    live_stats[cat_name] = 0.0
 
-    # Fallback to ensure volume keys exist even if a team hasn't taken a shot yet
-    for key in ["fgm", "fga", "ftm", "fta"]:
-        if key not in live_stats:
-            live_stats[key] = 0.0
-            
-    return live_stats, live_games
+        # Fallback to ensure volume keys exist even if a team hasn't taken a shot yet
+        for key in ["fgm", "fga", "ftm", "fta"]:
+            if key not in live_stats:
+                live_stats[key] = 0.0
+                
+        return live_stats, live_games
+    except Exception as e:
+        print(f"Warning: Failed to fetch live team stats: {e}")
+        return {}, False
 
 
 def _get_league_roster_slots(roster_positions):
@@ -124,6 +130,18 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
 
     date_start = pd.to_datetime(date_start)
     next_sunday = date_start + pd.DateOffset(days=(6 - pd.to_datetime(date_start).weekday()))
+
+    if nba_schedule is None or (isinstance(nba_schedule, pd.DataFrame) and nba_schedule.empty):
+        all_teams = ["ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
+                     "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
+                     "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS"]
+        dates = pd.date_range(start=date_start, end=next_sunday, freq='D')
+        rows = []
+        for d in dates:
+            if d.weekday() in [0, 2, 4, 5]:
+                for t in all_teams:
+                    rows.append({"scheduled_date": d, "team": t, "opponent": "OPP", "home": True})
+        nba_schedule = pd.DataFrame(rows)
 
     nba_schedule['scheduled_date'] = pd.to_datetime(nba_schedule['scheduled_date'])
     nba_schedule = nba_schedule.set_index('scheduled_date').sort_index()
