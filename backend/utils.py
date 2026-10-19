@@ -19,8 +19,8 @@ def clean_player_name(name):
         return None
 
     # 1. Map common accented characters to normal ones
-    accents = "āīūģķļņćčšžđáéíóúñçåøöäėëüĀĪŪĢĶĻŅĆČŠŽĐÁÉÍÓÚÑÇÅØÖÄĖËÜ"
-    normals = "aiugklnccszdaeiouncaooaeeuAIUGKLNCCSZDAEIOUNCAOAAEEU"
+    accents = "āīūģķļņćčšžđáéíóúñçåøöäėëüşğıĀĪŪĢĶĻŅĆČŠŽĐÁÉÍÓÚÑÇÅØÖÄĖËÜŞĞİ"
+    normals = "aiugklnccszdaeiouncaooaeeusgiAIUGKLNCCSZDAEIOUNCAOAAEEUSGI"
     
     # Create a translation table
     trans_table = str.maketrans(accents, normals)

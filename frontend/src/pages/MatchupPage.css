@@ -50,6 +50,53 @@
 }
 .opp-select:focus { border-color: var(--accent); }
 
+/* ─── Week / Date Controls ────────────────────────────── */
+.matchup-controls {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.matchup-control-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.matchup-input {
+  padding: 8px 12px;
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  width: 120px;
+}
+.matchup-input:focus { border-color: var(--accent); }
+
+/* ─── Analysis Loading ────────────────────────────────── */
+.analysis-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+/* ─── Summary ─────────────────────────────────────────── */
 .matchup-summary {
   text-align: center;
   border-top: 1px solid var(--border);
@@ -59,34 +106,85 @@
 .summary-pct { font-size: 3rem; font-weight: 900; }
 .summary-label { font-size: 0.8rem; color: var(--text-muted); }
 
+/* ─── Monte Carlo Results ─────────────────────────────── */
 .sim-result { margin-bottom: 1.5rem; }
 
-.sim-bars { display: flex; flex-direction: column; gap: 0.75rem; }
-
-.sim-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.mc-matchup-highlight {
+  text-align: center;
+  padding: 1rem 0 1.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.sim-label { width: 50px; font-weight: 700; font-size: 0.85rem; }
+.mc-matchup-pct {
+  font-size: 3.5rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
 
-.sim-bar-track {
-  flex: 1;
-  height: 8px;
+.mc-matchup-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+/* Per-category MC grid */
+.mc-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.mc-cat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  transition: all var(--transition);
+}
+
+.mc-cat-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.mc-cat-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.mc-cat-pct {
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.mc-cat-bar {
+  height: 3px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 2px;
+  margin-top: 6px;
   overflow: hidden;
 }
 
-.sim-bar-fill {
+.mc-cat-bar-fill {
   height: 100%;
-  border-radius: 4px;
-  transition: width 0.8s ease;
+  border-radius: 2px;
+  transition: width 0.6s ease;
 }
 
-.sim-pct { width: 45px; text-align: right; font-weight: 700; font-size: 0.9rem; }
+.mc-cat-avgs {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
 
+/* ─── Odds Grid ───────────────────────────────────────── */
 .odds-vs-row {
   display: flex;
   justify-content: space-between;
@@ -103,3 +201,4 @@
 }
 
 .streamers-section h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+

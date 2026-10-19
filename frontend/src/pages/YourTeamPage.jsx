@@ -4,8 +4,8 @@ import { TeamDataContext } from '../App.jsx';
 import TeamTable from '../components/TeamTable.jsx';
 import CategoryToggle from '../components/CategoryToggle.jsx';
 import WeeklyProjection from '../components/WeeklyProjection.jsx';
-import { CATEGORIES, rankPlayers, getPlayerMu, zScoreClass } from '../utils/zScore.js';
-import { formatMu } from '../utils/formatters.js';
+
+import { rankPlayers } from '../utils/zScore.js';
 import './YourTeamPage.css';
 
 export default function YourTeamPage() {
@@ -69,7 +69,7 @@ export default function YourTeamPage() {
             <div className="team-meta">
               <span className="badge badge-green">League Rank #{myTeam.rank}</span>
               <span className="badge badge-blue">
-                {myTeam.record?.wins ?? '?'}W–{myTeam.record?.losses ?? '?'}L
+                {myTeam.record?.wins ?? '?'}W–{myTeam.record?.losses ?? '?'}L–{myTeam.record?.ties ?? '?'}T
               </span>
               {leagueData?.name && (
                 <span className="badge badge-orange">📋 {leagueData.name}</span>
@@ -79,43 +79,22 @@ export default function YourTeamPage() {
           <button className="btn-secondary" onClick={() => navigate('/')}>← New Search</button>
         </div>
 
-        {/* Overview Strip */}
-        <div className="overview-strip" style={{ marginBottom: '1.5rem' }}>
-          {CATEGORIES.map(cat => {
-            const vals = activePlayers
-              .map(p => getPlayerMu(p, cat))
-              .filter(v => v !== null && !isNaN(v));
-            const avg  = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-            const zAvg = activePlayers.length
-              ? activePlayers.reduce((s, p) => s + (p.zScores?.[cat.key] ?? 0), 0) / activePlayers.length
-              : 0;
-            return (
-              <div className="overview-tile" key={cat.key}>
-                <div className="ot-label">{cat.key}</div>
-                <div className={`ot-value ${zScoreClass(zAvg)}`}>
-                  {formatMu(avg, cat.key)}
-                </div>
-                <div className="ot-rank">
-                  {zAvg >= 0 ? '+' : ''}{zAvg.toFixed(2)} z
-                </div>
-              </div>
-            );
-          })}
-        </div>
 
-        {/* Tabs */}
+
+
+
         <div className="tab-bar">
           <button
             className={`tab-btn ${activeTab === 'roster' ? 'active' : ''}`}
             onClick={() => setActiveTab('roster')}
           >
-            📋 Roster Rankings
+            Roster Rankings
           </button>
           <button
             className={`tab-btn ${activeTab === 'weekly' ? 'active' : ''}`}
             onClick={() => setActiveTab('weekly')}
           >
-            📅 Weekly Projection
+            Weekly Aggregate
           </button>
         </div>
 

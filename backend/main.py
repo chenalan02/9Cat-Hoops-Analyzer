@@ -17,7 +17,7 @@ from scipy.stats import norm
 from yfpy.query import YahooFantasySportsQuery
 
 from backend.models import *
-from backend.analysis import matchup_analysis_monte_carlo, matchup_analysis
+from backend.analysis import matchup_analysis_monte_carlo, matchup_analysis as run_matchup_analysis_calc
 
 load_dotenv()
 
@@ -49,14 +49,11 @@ def fetch_and_store_databricks(app: FastAPI):
                       .to_dict(orient='index')
                 )
 
-
     print(f"[{datetime.datetime.now()}] Databricks data fetched and stored in app state.")
-
-    # app.state is a persistent object linked to the app
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run on starup
+    # Run on startup
     fetch_and_store_databricks(app)
     
     # run daily
@@ -104,11 +101,11 @@ class TeamRequest(BaseModel):
 
 class MatchupRequest(BaseModel):
     league_id: str
-    team1: int
-    team2: int
+    team1: dict
+    team2: dict
     week_num: int
     date_start: str
-    roster_positions: dict
+    roster_positions: list
     stats_source: str
     monte_carlo: bool = False
 
@@ -118,7 +115,6 @@ def home():
 
 @app.post("/analyze-team")
 def analyze_team_link(request: TeamRequest):
-    
     received_link = request.fantasy_link
     print(f"DEBUG: Received link to scrape: {received_link}")
 
@@ -144,7 +140,7 @@ def analyze_team_link(request: TeamRequest):
     }
 
 @app.post("/matchup-analysis")
-def matchup_analysis(request: MatchupRequest):
+def matchup_analysis_endpoint(request: MatchupRequest):
     league_id = request.league_id
     team1 = request.team1
     team2 = request.team2
@@ -168,11 +164,10 @@ def matchup_analysis(request: MatchupRequest):
     if monte_carlo:
         results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
     else:
-        results = matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
+        results = run_matchup_analysis_calc(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
 
     return {
         "status": "success",
         "message": "Matchup analysis complete!",
         "payload": results
     }
-

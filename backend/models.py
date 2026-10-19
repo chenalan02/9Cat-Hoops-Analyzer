@@ -28,7 +28,8 @@ class FantasyLeague():
             "scoring_type": self.scoring_type,
             "teams": [team.to_dict() for team in self.teams],
             "roster_positions": self.roster_positions,
-            "stat_categories": self.stat_categories
+            "stat_categories": self.stat_categories,
+            "week_num": self.current_week
         }
 
 

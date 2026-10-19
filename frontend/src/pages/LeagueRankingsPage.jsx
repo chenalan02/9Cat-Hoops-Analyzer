@@ -1,8 +1,9 @@
 import { useState, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
-import { CATEGORIES, getPlayerMu, computeTeamWeeklyProjection, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
-import { formatMu, ordinal } from '../utils/formatters.js';
+import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import { formatMu } from '../utils/formatters.js';
+import LeagueWeeklyProjectionsChart from '../components/LeagueWeeklyProjectionsChart.jsx';
 import './LeagueRankingsPage.css';
 
 export default function LeagueRankingsPage() {
@@ -10,6 +11,7 @@ export default function LeagueRankingsPage() {
   const navigate = useNavigate();
   const [sortKey, setSortKey]   = useState('overall');
   const [sortDir, setSortDir]   = useState('asc');
+
 
   // Compute team-level category μ for all teams
   const teamStats = useMemo(() => {
@@ -106,6 +108,8 @@ export default function LeagueRankingsPage() {
           </div>
         </div>
 
+
+
         <p className="table-hint">
           Rankings based on team-average category μ. Click column headers to sort.
           Color = your rank in that category.
@@ -179,6 +183,12 @@ export default function LeagueRankingsPage() {
           <span className="z-avg">■</span> Middle &nbsp;
           <span className="z-bad">■</span> Bottom third
         </p>
+
+        {/* Weekly Projections Chart across all teams */}
+        <LeagueWeeklyProjectionsChart 
+          leagueTeams={leagueData.teams || []} 
+          myTeam={myTeam} 
+        />
       </div>
     </div>
   );

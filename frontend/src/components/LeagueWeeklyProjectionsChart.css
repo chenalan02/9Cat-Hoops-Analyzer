@@ -1,0 +1,246 @@
+.league-weekly-chart-card {
+  background: var(--bg-card, rgba(19, 25, 33, 0.6));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+}
+
+.league-weekly-chart-card.fade-up {
+  animation: fadeUp 0.4s ease both;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.chart-title-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chart-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary, #ffffff);
+  margin: 0;
+}
+
+.chart-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #8a9bb0);
+  margin: 0;
+}
+
+/* Category Toggle Bar */
+.category-toggle-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.category-chip {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: var(--bg-input, rgba(26, 34, 46, 0.5));
+  color: var(--text-secondary, #8a9bb0);
+  cursor: pointer;
+  transition: all var(--transition, 0.22s ease);
+  letter-spacing: 0.5px;
+}
+
+.category-chip:hover {
+  border-color: var(--accent, #00e676);
+  color: var(--text-primary, #ffffff);
+}
+
+.category-chip.active {
+  background: var(--accent-dim, rgba(0, 230, 118, 0.12));
+  border-color: var(--accent, #00e676);
+  color: var(--accent, #00e676);
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.15);
+}
+
+/* Chart Legend */
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.78rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary, #8a9bb0);
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-line {
+  width: 16px;
+  height: 2px;
+  background-color: var(--text-secondary, #8a9bb0);
+  position: relative;
+}
+
+.legend-line::after, .legend-line::before {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 6px;
+  background-color: var(--text-secondary, #8a9bb0);
+  top: -2px;
+}
+.legend-line::before { left: 0; }
+.legend-line::after { right: 0; }
+
+/* SVG styles */
+.chart-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Grid & Axes */
+.grid-line {
+  stroke: var(--border, rgba(255, 255, 255, 0.08));
+  stroke-dasharray: 4 4;
+}
+
+.baseline {
+  stroke: var(--border, rgba(255, 255, 255, 0.15));
+  stroke-width: 1.5;
+}
+
+.axis-text {
+  fill: var(--text-secondary, #8a9bb0);
+  font-size: 9px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.team-tick-text {
+  fill: var(--text-secondary, #8a9bb0);
+  font-size: 9px;
+  font-weight: 600;
+  user-select: none;
+  cursor: pointer;
+}
+
+.team-tick-text.my-team {
+  fill: var(--accent, #00e676);
+  font-weight: 800;
+}
+
+/* Bars & Error Bars */
+.chart-bar {
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+.chart-bar:hover {
+  opacity: 0.95;
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(255, 255, 255, 0.1));
+}
+
+.chart-bar.my-team {
+  stroke: #ffffff;
+  stroke-width: 1px;
+}
+
+.error-bar-line {
+  stroke: var(--text-primary, #f0f4f8);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.error-bar-cap {
+  stroke: var(--text-primary, #f0f4f8);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.interactive-trigger {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* Tooltip */
+.chart-tooltip {
+  position: absolute;
+  background: rgba(15, 19, 24, 0.96);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  width: 240px;
+  pointer-events: none;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  font-family: inherit;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform: translate(-50%, -100%);
+  margin-top: -10px;
+}
+
+.tooltip-header {
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.tooltip-team-name {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: var(--text-primary, #f0f4f8);
+}
+
+.tooltip-team-badge {
+  font-size: 0.65rem;
+  margin-left: 0.5rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.tooltip-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.tooltip-stat-label {
+  color: var(--text-secondary, #8a9bb0);
+}
+
+.tooltip-stat-value {
+  font-weight: 700;
+  color: var(--text-primary, #f0f4f8);
+}

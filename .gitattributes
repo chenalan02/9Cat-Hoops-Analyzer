@@ -1,2 +1,4 @@
-*.ipynb linguist-detectable=false
+# Force LF line endings for all text files (prevents Windows CRLF issues)
 * text=auto eol=lf
+
+*.ipynb linguist-detectable=false

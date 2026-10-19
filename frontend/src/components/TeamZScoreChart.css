@@ -1,0 +1,213 @@
+.z-score-chart-card {
+  background: var(--bg-card, rgba(30, 32, 38, 0.5));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.chart-title-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chart-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary, #ffffff);
+  margin: 0;
+}
+
+.chart-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #9ca3af);
+  margin: 0;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary, #9ca3af);
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-line {
+  width: 16px;
+  height: 2px;
+  background-color: var(--text-secondary, #9ca3af);
+  position: relative;
+}
+
+.legend-line::after, .legend-line::before {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 6px;
+  background-color: var(--text-secondary, #9ca3af);
+  top: -2px;
+}
+.legend-line::before { left: 0; }
+.legend-line::after { right: 0; }
+
+.chart-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Grid & Axes */
+.grid-line {
+  stroke: var(--border, rgba(255, 255, 255, 0.08));
+  stroke-dasharray: 4 4;
+}
+
+.baseline {
+  stroke: var(--text-secondary, #6b7280);
+  stroke-width: 1.5;
+}
+
+.axis-text {
+  fill: var(--text-secondary, #9ca3af);
+  font-size: 10px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.cat-label {
+  fill: var(--text-primary, #ffffff);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-anchor: middle;
+}
+
+/* Bars & Interactive regions */
+.chart-bar {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+.chart-bar:hover {
+  opacity: 0.95;
+  filter: brightness(1.15);
+}
+
+.error-bar-line {
+  stroke: var(--text-primary, #f3f4f6);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.error-bar-cap {
+  stroke: var(--text-primary, #f3f4f6);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.interactive-trigger {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* Custom Tooltip */
+.chart-tooltip {
+  position: absolute;
+  background: rgba(22, 24, 29, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 1rem;
+  width: 260px;
+  pointer-events: none;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  font-family: inherit;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: translate(-50%, -100%);
+  margin-top: -10px;
+}
+
+.tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.tooltip-cat {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary, #ffffff);
+}
+
+.tooltip-stats {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #9ca3af);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.player-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.player-name {
+  color: var(--text-primary, #ffffff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.player-z {
+  font-weight: 600;
+}
+
+.z-tag-elite { color: #10b981; }
+.z-tag-good { color: #34d399; }
+.z-tag-avg { color: #9ca3af; }
+.z-tag-poor { color: #f87171; }
+.z-tag-bad { color: #ef4444; }

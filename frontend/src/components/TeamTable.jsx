@@ -46,7 +46,7 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       let av, bv;
       if (sortKey === 'rank') { av = a.rank; bv = b.rank; }
       else if (sortKey === 'name') { av = a.name; bv = b.name; }
-      else if (sortKey === 'gp')  { av = a.ema_stats?.games_played ?? 0; bv = b.ema_stats?.games_played ?? 0; }
+      else if (sortKey === 'gp') { av = a.ema_stats?.games_played ?? 0; bv = b.ema_stats?.games_played ?? 0; }
       else if (sortKey === 'proj_gp') { av = a.ema_stats?.mu_min > 0 ? (a.ema_stats?.games_played ?? 0) / 82 * 7 : 0; bv = b.ema_stats?.mu_min > 0 ? (b.ema_stats?.games_played ?? 0) / 82 * 7 : 0; }
       else if (sortKey === 'zscore') { av = a.zSum; bv = b.zSum; }
       else {
@@ -88,10 +88,10 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
             <th className={sortKey === 'rank' ? 'sort-active' : ''} onClick={() => handleSort('rank')} style={{ textAlign: 'center' }}>
               # <SortIcon col="rank" />
             </th>
-            <Th col="name"     label="Player" />
+            <Th col="name" label="Player" />
             <th>Pos</th>
             <th>Team</th>
-            <Th col="gp"      label="GP" />
+            <Th col="gp" label="GP" />
             <Th col="proj_gp" label="Proj GP" />
             {CATEGORIES.map(cat => (
               <th
@@ -136,8 +136,8 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
                 <td>{player.ema_stats?.games_played ?? '—'}</td>
                 <td>{projGp}</td>
                 {CATEGORIES.map(cat => {
-                  const mu  = getPlayerMu(player, cat);
-                  const z   = player.zScores?.[cat.key] ?? null;
+                  const mu = getPlayerMu(player, cat);
+                  const z = player.zScores?.[cat.key] ?? null;
                   const punted = puntedCats.has(cat.key);
                   return (
                     <td

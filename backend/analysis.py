@@ -76,14 +76,42 @@ def _get_league_roster_slots(roster_positions):
     active_slots = []
     inactive_slots = []
     for position in roster_positions:
-        if position.is_starting_position:
-            for i in range(position.count):
-                active_slots.append(position.position + "_" + str(i+1))
+        # Handle both dict (from API payload) and custom yfpy RosterPosition object
+        if isinstance(position, dict):
+            is_starting = position.get("is_starting_position", False)
+            count = position.get("count", 0)
+            pos_name = position.get("position", "")
         else:
-            for i in range(position.count):
-                inactive_slots.append(position.position + "_" + str(i+1))
+            is_starting = getattr(position, "is_starting_position", False)
+            count = getattr(position, "count", 0)
+            pos_name = getattr(position, "position", "")
+
+        if is_starting:
+            for i in range(count):
+                active_slots.append(pos_name + "_" + str(i+1))
+        else:
+            for i in range(count):
+                inactive_slots.append(pos_name + "_" + str(i+1))
 
     return active_slots, inactive_slots
+
+
+def _get_safe_player_stats(player_info, stats_source):
+    stats = player_info.get(stats_source, {}) or {}
+    defaults = {
+        "rank": 999,
+        "proj_games_played": None,
+    }
+    for stat in ["pts", "reb", "ast", "stl", "blk", "tov", "fg3m"]:
+        defaults[f"mu_{stat}"] = 0.0
+        defaults[f"var_{stat}"] = 0.0
+    for stat in ["fg", "ft"]:
+        defaults[f"mu_{stat}a"] = 0.0
+        defaults[f"var_{stat}a"] = 0.0
+        defaults[f"mu_{stat}m"] = 0.0
+        defaults[f"var_{stat}m"] = 0.0
+    
+    return {**defaults, **{k: v for k, v in stats.items() if v is not None}}
 
 
 def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule):
@@ -104,8 +132,11 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
     for date in pd.date_range(start=date_start, end=next_sunday, freq='D'):
         team1_schedule[date.strftime('%Y-%m-%d')] = {}
         team2_schedule[date.strftime('%Y-%m-%d')] = {}
-        daily_schedule = nba_schedule.loc[date]
-        games_info = daily_schedule.set_index('team').to_dict(orient='index')
+        if date in nba_schedule.index:
+            daily_schedule = nba_schedule.loc[[date]]
+            games_info = daily_schedule.set_index('team').to_dict(orient='index')
+        else:
+            games_info = {}
         teams_set = set(games_info.keys())
 
         for player in team1["players"]:
@@ -137,9 +168,10 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
             # constraint 1: each player can only be assigned to 1 slot
             for player in team["players"]:
                 p_name = player['name']
+                clean_p_name = "".join(c if c.isalnum() or c == '_' else '_' for c in p_name.replace(' ', '_'))
                 prob += (
                     pulp.lpSum(choices[(p_name, slot)] for slot in roster_slots) == 1,
-                    f"Slot_{p_name.replace(' ', '_')}_one_slot" # Replacing spaces for cleaner PuLP logs
+                    f"Slot_{clean_p_name}_one_slot"
                 )
 
             # constraint 2: each slot can only be assigned to at most 1 player
@@ -179,7 +211,7 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
                 player_name = player_info['name']
                 player_positions = player_info['positions']
                 player_status = player_info['status']
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
                 game_scheduled = player_name in players_with_game
 
                 player_rank_score = 1000 - player_stats['rank']
@@ -194,9 +226,10 @@ def _solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sour
                         objective_terms.append(choices[(player_name, slot)] * weight)
 
                     else:
+                        clean_player_name = "".join(c if c.isalnum() or c == '_' else '_' for c in player_name.replace(' ', '_'))
                         prob += (
                             choices[(player_name, slot)] == 0,
-                            f"Eligibility_{player_name}_{slot}"
+                            f"Eligibility_{clean_player_name}_{slot}"
                         )
             
             prob += pulp.lpSum(objective_terms), "Total_Ranking_Score"
@@ -249,7 +282,7 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
         for date, lineup in optimal_lineups[team_num].items():
             for slot, player_name in lineup.items():
                 player_info = players_dict[player_name]
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
 
                 if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
 
@@ -295,12 +328,12 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
 
         # Delta Method variance formula
         if team1_a_mu > 0:
-            team1_eff_var = (team1_m_var / (team1_a_mu ** 2)) - (((team1_m_mu ** 2) * team1_a_var) / (team1_a_mu ** 4))
+            team1_eff_var = (team1_m_var / (team1_a_mu ** 2)) + (((team1_m_mu ** 2) * team1_a_var) / (team1_a_mu ** 4))
         else:
             team1_eff_var = 0
             
         if team2_a_mu > 0:
-            team2_eff_var = (team2_m_var / (team2_a_mu ** 2)) - (((team2_m_mu ** 2) * team2_a_var) / (team2_a_mu ** 4))
+            team2_eff_var = (team2_m_var / (team2_a_mu ** 2)) + (((team2_m_mu ** 2) * team2_a_var) / (team2_a_mu ** 4))
         else:
             team2_eff_var = 0
 
@@ -311,7 +344,21 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
 
         win_probs[f"{cat}%"] = sp.stats.norm.sf(0, loc=diff_eff_mu, scale=np.sqrt(diff_eff_var)) if diff_eff_var > 0 else 0.5
 
-    return {"win_probs": win_probs, "agg_dists": agg_dists}
+    # Collect players who are injured or projected to play 0 games
+    inactive_players = {"team1": [], "team2": []}
+    for team_key, team in [("team1", team1), ("team2", team2)]:
+        for player in team["players"]:
+            player_stats = player.get(stats_source, {}) or {}
+            is_injured = player.get("status") is not None and player.get("status") != ""
+            is_zero_games = player_stats.get("proj_games_played") is None
+            if is_injured or is_zero_games:
+                inactive_players[team_key].append({
+                    "name": player.get("name"),
+                    "status": player.get("status"),
+                    "proj_games_played": player_stats.get("proj_games_played")
+                })
+
+    return {"win_probs": win_probs, "agg_dists": agg_dists, "inactive_players": inactive_players}
 
 
 def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule, n_sims=10000):
@@ -350,7 +397,7 @@ def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start
             sim_agg[team][date] = {}
             for slot, player_name in lineup.items():
                 player_info = players_dict[player_name]
-                player_stats = player_info[stats_source]
+                player_stats = _get_safe_player_stats(player_info, stats_source)
 
                 if slot.split("_")[0] not in ["BN", "Util", "IL", "IL+"] and player_stats["proj_games_played"] is not None:
                     # negative binomial sim for counting stats, poisson if not overdispersed
@@ -430,4 +477,18 @@ def matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start
         for team in ["team1", "team2"]
     }   
 
-    return {"win_pcts": win_pcts, "sim_avg": sim_avg}
+    # Collect players who are injured or projected to play 0 games
+    inactive_players = {"team1": [], "team2": []}
+    for team_key, team in [("team1", team1), ("team2", team2)]:
+        for player in team["players"]:
+            player_stats = player.get(stats_source, {}) or {}
+            is_injured = player.get("status") is not None and player.get("status") != ""
+            is_zero_games = player_stats.get("proj_games_played") is None
+            if is_injured or is_zero_games:
+                inactive_players[team_key].append({
+                    "name": player.get("name"),
+                    "status": player.get("status"),
+                    "proj_games_played": player_stats.get("proj_games_played")
+                })
+
+    return {"win_pcts": win_pcts, "sim_avg": sim_avg, "inactive_players": inactive_players}

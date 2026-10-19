@@ -57,3 +57,110 @@
   display: flex;
   gap: 4px;
 }
+
+/* ── Card view ─────────────────────────── */
+.proj-raw-fga {
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+/* ── Bar chart view ─────────────────────── */
+.proj-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.proj-bar-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 120px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.proj-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.proj-bar-cat {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.proj-bar-val {
+  font-size: 0.95rem;
+  font-weight: 800;
+  min-width: 52px;
+}
+
+.proj-bar-rank {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.proj-bar-track {
+  position: relative;
+  height: 10px;
+  background: var(--bg-input);
+  border-radius: 5px;
+  overflow: visible;
+}
+
+.proj-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.5s ease;
+}
+
+/* Error range — translucent lighter band */
+.proj-error-range {
+  position: absolute;
+  top: -3px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* Center tick for error bar */
+.proj-error-center {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.proj-bar-ci {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .proj-bar-row {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+  .proj-bar-ci {
+    text-align: left;
+  }
+}
