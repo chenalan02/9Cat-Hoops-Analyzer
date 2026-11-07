@@ -16,3 +16,5 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5500:80"
+    depends_on:
+      - backend

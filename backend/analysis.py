@@ -4,6 +4,13 @@ import pandas as pd
 import scipy as sp
 import pulp
 
+
+def _parse_yahoo_stat_value(value):
+    if value is None or not str(value).strip() or str(value).strip() == "-":
+        return 0.0
+    return float(value)
+
+
 def _get_live_team_stats(yahoo_query, team_id, week_num):
     '''
     Makes a single raw API call to extract ALL 9-cat stats for a team, 
@@ -40,24 +47,25 @@ def _get_live_team_stats(yahoo_query, team_id, week_num):
         value = item["stat"]["value"]
 
         # 1. Handle the string splits for efficiency volume
-        if stat_id == "9004003" and value != "0":
-            fgm, fga = value.split("/")
-            live_stats["fgm"] = float(fgm)
-            live_stats["fga"] = float(fga)
+        if stat_id == "9004003":
+            ratio = str(value).strip() if value is not None else ""
+            fgm, fga = ("0", "0") if ratio in {"", "-", "0"} else ratio.split("/")
+            live_stats["fgm"] = _parse_yahoo_stat_value(fgm)
+            live_stats["fga"] = _parse_yahoo_stat_value(fga)
 
-        elif stat_id == "9007006" and value != "0":
-            ftm, fta = value.split("/")
-            live_stats["ftm"] = float(ftm)
-            live_stats["fta"] = float(fta)
+        elif stat_id == "9007006":
+            ratio = str(value).strip() if value is not None else ""
+            ftm, fta = ("0", "0") if ratio in {"", "-", "0"} else ratio.split("/")
+            live_stats["ftm"] = _parse_yahoo_stat_value(ftm)
+            live_stats["fta"] = _parse_yahoo_stat_value(fta)
 
         # 2. Handle the standard 9 categories
         elif stat_id in yahoo_stat_map:
             cat_name = yahoo_stat_map[stat_id]
 
-            # Yahoo occasionally returns a dash ("-") or empty string if a team 
-            # literally has 0 stats in a category early in the week.
+            # Yahoo uses a dash or an empty string when there are no stats yet.
             try:
-                live_stats[cat_name] = float(value)
+                live_stats[cat_name] = _parse_yahoo_stat_value(value)
             except ValueError:
                 live_stats[cat_name] = 0.0
 
