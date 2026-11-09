@@ -17,7 +17,11 @@ from scipy.stats import norm
 from yfpy.query import YahooFantasySportsQuery
 
 from backend.models import *
-from backend.analysis import matchup_analysis_monte_carlo, matchup_analysis as run_matchup_analysis_calc
+from backend.analysis import (
+    matchup_analysis_monte_carlo,
+    matchup_analysis as run_matchup_analysis_calc,
+    get_streamer_recommendations
+)
 
 load_dotenv()
 
@@ -109,6 +113,17 @@ class MatchupRequest(BaseModel):
     stats_source: str
     monte_carlo: bool = False
 
+class StreamerRequest(BaseModel):
+    league_id: str
+    team1: dict
+    team2: dict
+    week_num: int
+    date_start: str
+    roster_positions: list
+    stats_source: str = "ema"
+    all_rostered_names: list = []
+    limit: int = 6
+
 @app.get("/")
 def home():
     return {"message": "Basketball API is running. Go to /docs"}
@@ -171,3 +186,63 @@ def matchup_analysis_endpoint(request: MatchupRequest):
         "message": "Matchup analysis complete!",
         "payload": results
     }
+
+@app.post("/streamer-recommendations")
+def streamer_recommendations_endpoint(request: StreamerRequest):
+    league_id = request.league_id
+    team1 = request.team1
+    team2 = request.team2
+    week_num = request.week_num
+    date_start = request.date_start
+    roster_positions = request.roster_positions
+    stats_source = request.stats_source
+    all_rostered_names = request.all_rostered_names or None
+    limit = request.limit
+    nba_schedule = getattr(app.state, "nba_schedule", None)
+
+    try:
+        yahoo_query = YahooFantasySportsQuery(
+            league_id=league_id,
+            game_code="nba",
+            offline=False,
+            yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+            yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+            env_file_location=Path("/app/auth"),
+            save_token_data_to_env_file=False
+        )
+
+        player_stats_pool = (
+            app.state.player_stats.get(stats_source)
+            if hasattr(app.state, "player_stats") and app.state.player_stats
+            else {}
+        )
+        if not player_stats_pool and hasattr(app.state, "player_stats"):
+            player_stats_pool = app.state.player_stats.get("ema", {})
+
+        results = get_streamer_recommendations(
+            yahoo_query=yahoo_query,
+            team1=team1,
+            team2=team2,
+            week_num=week_num,
+            date_start=date_start,
+            roster_positions=roster_positions,
+            stats_source=stats_source,
+            nba_schedule=nba_schedule,
+            player_stats_pool=player_stats_pool,
+            all_rostered_names=all_rostered_names,
+            limit=limit
+        )
+
+        return {
+            "status": "success",
+            "message": "Streamer recommendations complete!",
+            "payload": results
+        }
+    except Exception as e:
+        logger.error(f"Error in streamer recommendations: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "payload": None
+        }
+
