@@ -73,6 +73,18 @@ function std(arr) {
   return Math.sqrt(variance) || 1;
 }
 
+export const DB_Z_KEYS = {
+  PTS: 'z_pts',
+  REB: 'z_reb',
+  AST: 'z_ast',
+  STL: 'z_stl',
+  BLK: 'z_blk',
+  '3PM': 'z_fg3m',
+  'FG%': 'z_fg%',
+  'FT%': 'z_ft%',
+  TO: 'z_tov',
+};
+
 // Given a league's team list (from the API payload), compute z-scores for each
 // player on each category, then compute summed z-scores for ranking.
 //
@@ -81,6 +93,7 @@ function std(arr) {
 //
 // Returns the same teams with each player augmented with:
 //   player.zScores: { [catKey]: number }
+//   player.z_total: number  (backend standardized total z-score)
 //   player.zSum:    number  (sum of z-scores for active cats)
 //   player.rank:    number
 export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => c.key)) {
@@ -102,14 +115,31 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
       player.zScores = {};
       let zSum = 0;
       for (const cat of CATEGORIES) {
-        const mu = getPlayerMu(player, cat);
-        if (mu === null) { player.zScores[cat.key] = null; continue; }
-        let z = (mu - stats[cat.key].mean) / stats[cat.key].std;
-        if (cat.lowerBetter) z = -z;
-        player.zScores[cat.key] = z;
-        if (activeCats.includes(cat.key)) zSum += z;
+        const dbKey = DB_Z_KEYS[cat.key];
+        const dbZ = player.ema_stats?.[dbKey] ?? player[dbKey];
+        if (dbZ !== undefined && dbZ !== null && !isNaN(dbZ)) {
+          player.zScores[cat.key] = Number(dbZ);
+          if (activeCats.includes(cat.key)) zSum += Number(dbZ);
+        } else {
+          const mu = getPlayerMu(player, cat);
+          if (mu === null) { player.zScores[cat.key] = null; continue; }
+          let z = (mu - stats[cat.key].mean) / stats[cat.key].std;
+          if (cat.lowerBetter) z = -z;
+          player.zScores[cat.key] = z;
+          if (activeCats.includes(cat.key)) zSum += z;
+        }
       }
-      player.zSum = zSum;
+
+      const rawZTotal = player.z_total ?? player.ema_stats?.z_total;
+      if (activeCats.length === CATEGORIES.length && rawZTotal != null && !isNaN(rawZTotal)) {
+        player.z_total = Number(rawZTotal);
+        player.zSum = Number(rawZTotal);
+      } else {
+        player.zSum = zSum;
+        if (player.z_total == null) {
+          player.z_total = zSum;
+        }
+      }
     }
   }
 
@@ -121,7 +151,7 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
 export function rankPlayers(players) {
   const sorted = [...players]
     .filter(p => p.selected_position !== 'IL' && p.selected_position !== 'NA')
-    .sort((a, b) => (b.zSum ?? -999) - (a.zSum ?? -999));
+    .sort((a, b) => ((b.z_total ?? b.zSum) ?? -999) - ((a.z_total ?? a.zSum) ?? -999));
 
   return sorted.map((p, i) => ({ ...p, rank: i + 1 }));
 }

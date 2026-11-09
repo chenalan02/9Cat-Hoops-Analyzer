@@ -20,7 +20,7 @@ function isValidYahooLink(url) {
 }
 
 export default function HomePage() {
-  const { fetchTeam, loading, error: fetchError } = useContext(TeamDataContext);
+  const { fetchTeam, loading, error: fetchError, loadMockData } = useContext(TeamDataContext);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
@@ -94,6 +94,21 @@ export default function HomePage() {
           </div>
 
           {displayError && <p className="input-error" role="alert">{displayError}</p>}
+
+          <div className="demo-launcher" style={{ marginTop: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>No league link handy?</span>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ padding: '6px 14px', fontSize: '0.85rem' }}
+              onClick={() => {
+                loadMockData();
+                navigate('/your-team');
+              }}
+            >
+              ⚡ Explore with Demo Data
+            </button>
+          </div>
 
           <p className="hero-hint">
             Works with public Yahoo Fantasy Basketball team links
