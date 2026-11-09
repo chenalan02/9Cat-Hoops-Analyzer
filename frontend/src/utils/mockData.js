@@ -11,6 +11,7 @@ const makePlayer = (name, pos, team, stats) => ({
   ema_stats: {
     mu_min:  stats.min  ?? 30,
     games_played: stats.gp ?? 65,
+    proj_games_preseason: stats.proj_gp ?? stats.gp ?? 70,
     mu_pts:  stats.pts  ?? 18,  var_pts:  stats.vpts  ?? 16,
     mu_reb:  stats.reb  ?? 5,   var_reb:  stats.vreb  ?? 4,
     mu_ast:  stats.ast  ?? 4,   var_ast:  stats.vast  ?? 3,

@@ -1302,11 +1302,15 @@ export default function MatchupPage() {
                       {streamerRecs.roster_action && (
                         <div className={`streamer-roster-banner ${streamerRecs.roster_action.type === 'MOVE_TO_IR' ? 'ir-stash' : 'drop-swap'}`}>
                           <span className="srb-icon">
-                            {streamerRecs.roster_action.type === 'MOVE_TO_IR' ? '✨' : '💡'}
+                            {streamerRecs.roster_action.type === 'MOVE_TO_IR' ? '✨' : streamerRecs.roster_action.type === 'HOLD_WARNING' ? '⚠️' : '💡'}
                           </span>
                           <div>
                             <strong>
-                              {streamerRecs.roster_action.type === 'MOVE_TO_IR' ? 'Zero-Drop Roster Move: ' : 'Recommended Bench Drop: '}
+                              {streamerRecs.roster_action.type === 'MOVE_TO_IR'
+                                ? 'Zero-Drop Roster Move: '
+                                : streamerRecs.roster_action.type === 'HOLD_WARNING'
+                                ? 'High-Value Bench (vs. Free Agents): '
+                                : 'Recommended Bench Drop: '}
                             </strong>
                             <span>{streamerRecs.roster_action.reason}</span>
                           </div>
@@ -1354,8 +1358,8 @@ export default function MatchupPage() {
 
                               {/* Action Callout */}
                               <div className="sc-action-row">
-                                <span className={`badge ${action?.type === 'MOVE_TO_IR' ? 'badge-green' : 'badge-orange'}`}>
-                                  {action?.type === 'MOVE_TO_IR' ? 'Move to IR' : 'Drop Candidate'}
+                                <span className={`badge ${action?.type === 'MOVE_TO_IR' ? 'badge-green' : action?.type === 'HOLD_WARNING' ? 'badge-red' : 'badge-orange'}`}>
+                                  {action?.type === 'MOVE_TO_IR' ? 'Move to IR' : action?.type === 'HOLD_WARNING' ? 'Hold / Caution' : 'Drop Candidate'}
                                 </span>
                                 <span className="sc-action-text">{action?.reason}</span>
                               </div>

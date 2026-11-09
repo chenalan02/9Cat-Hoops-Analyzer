@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { CATEGORIES, computeLeagueZScores, rankPlayers, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
 import { formatMu, formatZ, formatDelta } from '../utils/formatters.js';
 import './TeamTable.css';
 
@@ -21,24 +21,82 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
     [puntedCats]
   );
 
-  // Re-rank players given active categories
-  const rankedPlayers = useMemo(() => {
-    if (!players) return [];
-    // Recompute zSum for active cats
-    const withNewZSum = players.map(p => ({
-      ...p,
-      zSum: activeCats.reduce((sum, cat) => sum + (p.zScores?.[cat.key] ?? 0), 0),
-    }));
-    return rankPlayers(withNewZSum);
-  }, [players, activeCats]);
+  // 1. Dynamic league-wide ranking & baseline calculation
+  const { rankedPlayers, baselineRankMap } = useMemo(() => {
+    if (!players || players.length === 0) {
+      return { rankedPlayers: [], baselineRankMap: {} };
+    }
 
-  // Build baseline rank map for delta
-  const baselineRankMap = useMemo(() => {
-    const map = {};
-    if (!baselinePlayers) return map;
-    baselinePlayers.forEach(p => { map[p.name] = p.rank; });
-    return map;
-  }, [baselinePlayers]);
+    // Collect all unique rostered players across the entire league
+    const leaguePlayers = (() => {
+      if (!allTeams || allTeams.length === 0) return players;
+      const map = new Map();
+      for (const team of allTeams) {
+        if (team.players) {
+          for (const p of team.players) {
+            if (p?.name && !map.has(p.name)) {
+              map.set(p.name, p);
+            }
+          }
+        }
+      }
+      return map.size > 0 ? Array.from(map.values()) : players;
+    })();
+
+    // Helper: calculate Z-score sum across specified categories
+    const getZForCats = (p, cats) => {
+      if (cats.length === CATEGORIES.length) {
+        const rawZ = p.z_total ?? p.ema_stats?.z_total;
+        if (rawZ != null && !isNaN(rawZ)) return Number(rawZ);
+      }
+      return cats.reduce((sum, cat) => sum + (p.zScores?.[cat.key] ?? 0), 0);
+    };
+
+    // 2. Baseline League Ranking (all 9 categories active)
+    const baselineSorted = [...leaguePlayers].sort((a, b) => {
+      const bZ = getZForCats(b, CATEGORIES);
+      const aZ = getZForCats(a, CATEGORIES);
+      if (Math.abs(bZ - aZ) > 0.00001) return bZ - aZ;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    const bMap = {};
+    baselineSorted.forEach((p, idx) => {
+      bMap[p.name] = idx + 1;
+    });
+
+    // 3. Current League Ranking (with activeCats / punts applied)
+    const currentSorted = [...leaguePlayers].sort((a, b) => {
+      const bZ = getZForCats(b, activeCats);
+      const aZ = getZForCats(a, activeCats);
+      if (Math.abs(bZ - aZ) > 0.00001) return bZ - aZ;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    const cMap = {};
+    const cZSumMap = {};
+    currentSorted.forEach((p, idx) => {
+      cMap[p.name] = idx + 1;
+      cZSumMap[p.name] = getZForCats(p, activeCats);
+    });
+
+    // 4. Augment YOUR team's players with their league rank & delta
+    const teamRanked = players.map(p => {
+      const leagueRank = cMap[p.name] ?? (p.rank || 999);
+      const baseRank = bMap[p.name] ?? leagueRank;
+      const zSum = cZSumMap[p.name] ?? getZForCats(p, activeCats);
+      const delta = baseRank - leagueRank; // e.g. base #20, now #12 => delta +8 (improved!)
+      return {
+        ...p,
+        rank: leagueRank,
+        baseRank,
+        zSum,
+        rankDelta: delta,
+      };
+    });
+
+    return { rankedPlayers: teamRanked, baselineRankMap: bMap };
+  }, [players, allTeams, activeCats]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -47,7 +105,12 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       if (sortKey === 'rank') { av = a.rank; bv = b.rank; }
       else if (sortKey === 'name') { av = a.name; bv = b.name; }
       else if (sortKey === 'gp') { av = a.ema_stats?.games_played ?? 0; bv = b.ema_stats?.games_played ?? 0; }
-      else if (sortKey === 'proj_gp') { av = a.ema_stats?.mu_min > 0 ? (a.ema_stats?.games_played ?? 0) / 82 * 7 : 0; bv = b.ema_stats?.mu_min > 0 ? (b.ema_stats?.games_played ?? 0) / 82 * 7 : 0; }
+      else if (sortKey === 'proj_gp') {
+        const aVal = Number(a.ema_stats?.proj_games_preseason ?? a.preseason_stats?.proj_games_preseason ?? a.ros_stats?.proj_games_played ?? a.proj_games_preseason ?? a.proj_games_played ?? 0) || 0;
+        const bVal = Number(b.ema_stats?.proj_games_preseason ?? b.preseason_stats?.proj_games_preseason ?? b.ros_stats?.proj_games_played ?? b.proj_games_preseason ?? b.proj_games_played ?? 0) || 0;
+        av = aVal;
+        bv = bVal;
+      }
       else if (sortKey === 'zscore') { av = a.zSum; bv = b.zSum; }
       else {
         // category mu
@@ -62,7 +125,7 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'name' ? 'asc' : 'desc'); }
+    else { setSortKey(key); setSortDir(key === 'name' || key === 'rank' ? 'asc' : 'desc'); }
   };
 
   const SortIcon = ({ col }) => {
@@ -70,11 +133,11 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
     return <span className="sort-icon active">{sortDir === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const Th = ({ col, label }) => (
+  const Th = ({ col, label, title }) => (
     <th
       className={sortKey === col ? 'sort-active' : ''}
       onClick={() => handleSort(col)}
-      title={`Sort by ${label}`}
+      title={title || `Sort by ${label}`}
     >
       {label} <SortIcon col={col} />
     </th>
@@ -85,14 +148,19 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       <table className="data-table team-table" aria-label="Team player statistics">
         <thead>
           <tr>
-            <th className={sortKey === 'rank' ? 'sort-active' : ''} onClick={() => handleSort('rank')} style={{ textAlign: 'center' }}>
-              # <SortIcon col="rank" />
+            <th
+              className={sortKey === 'rank' ? 'sort-active' : ''}
+              onClick={() => handleSort('rank')}
+              style={{ textAlign: 'center', whiteSpace: 'nowrap' }}
+              title="League Rank (dynamically calculated across all rostered players in the league)"
+            >
+              # League <SortIcon col="rank" />
             </th>
             <Th col="name" label="Player" />
             <th>Pos</th>
             <th>Team</th>
-            <Th col="gp" label="GP" />
-            <Th col="proj_gp" label="Proj GP" />
+            <Th col="gp" label="GP" title="Games played in stats sample" />
+            <Th col="proj_gp" label="Proj GP" title="Total projected games played for the season" />
             {CATEGORIES.map(cat => (
               <th
                 key={cat.key}
@@ -112,16 +180,18 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
             const delta = baseRank ? baseRank - player.rank : 0;
             const { symbol, cls } = formatDelta(delta);
 
-            const projGp = player.ema_stats?.mu_min > 0
-              ? ((player.ema_stats?.games_played ?? 0) / 82 * 7).toFixed(1)
-              : '—';
-
             return (
               <tr key={player.name}>
-                <td style={{ textAlign: 'center', fontWeight: 800 }}>
-                  <span className="rank-num">{player.rank}</span>
+                <td style={{ textAlign: 'center', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                  <span className="rank-num">#{player.rank}</span>
                   {puntedCats.size > 0 && baseRank && (
-                    <span className={`delta ${cls}`}> {symbol}</span>
+                    <span
+                      className={`delta ${cls}`}
+                      style={{ marginLeft: '5px' }}
+                      title={`Baseline League Rank: #${baseRank} → Punted: #${player.rank} (${delta > 0 ? '+' : ''}${delta})`}
+                    >
+                      {symbol}
+                    </span>
                   )}
                 </td>
                 <td>
@@ -134,7 +204,17 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
                 </td>
                 <td className="team-abbr">{player.nba_team}</td>
                 <td>{player.ema_stats?.games_played ?? '—'}</td>
-                <td>{projGp}</td>
+                <td>
+                  {(() => {
+                    const raw = player.ema_stats?.proj_games_preseason
+                      ?? player.preseason_stats?.proj_games_preseason
+                      ?? player.ros_stats?.proj_games_played
+                      ?? player.ros_stats?.proj_games
+                      ?? player.proj_games_preseason
+                      ?? player.proj_games_played;
+                    return raw != null && !isNaN(raw) ? Math.round(Number(raw)) : '—';
+                  })()}
+                </td>
                 {CATEGORIES.map(cat => {
                   const mu = getPlayerMu(player, cat);
                   const z = player.zScores?.[cat.key] ?? null;

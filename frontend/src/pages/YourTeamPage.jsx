@@ -4,8 +4,6 @@ import { TeamDataContext } from '../App.jsx';
 import TeamTable from '../components/TeamTable.jsx';
 import CategoryToggle from '../components/CategoryToggle.jsx';
 import WeeklyProjection from '../components/WeeklyProjection.jsx';
-
-import { rankPlayers } from '../utils/zScore.js';
 import './YourTeamPage.css';
 
 export default function YourTeamPage() {
@@ -22,12 +20,6 @@ export default function YourTeamPage() {
       return next;
     });
   };
-
-  // Baseline ranking (no punts) for delta calculation
-  const baselinePlayers = useMemo(() => {
-    if (!myTeam?.players) return [];
-    return rankPlayers(myTeam.players);
-  }, [myTeam]);
 
   if (loading) {
     return (
@@ -105,7 +97,6 @@ export default function YourTeamPage() {
               players={myTeam.players}
               puntedCats={puntedCats}
               allTeams={leagueData?.teams ?? []}
-              baselinePlayers={baselinePlayers}
             />
           </>
         )}

@@ -851,36 +851,7 @@ def get_streamer_recommendations(
                         starts += 1
         return starts
 
-    if active_or_bench_injured and open_il_slots > 0:
-        stashed_player = active_or_bench_injured[0]
-        roster_action = {
-            "type": "MOVE_TO_IR",
-            "target_player": stashed_player.get("name"),
-            "reason": f"Move {stashed_player.get('name')} ({stashed_player.get('status')}) to open IL slot (0 drops required)."
-        }
-        drop_player = None
-        drop_starts = 0
-    else:
-        # Identify drop candidate among team1 players
-        t1_players = team1.get("players", [])
-        sorted_bench = sorted(
-            t1_players,
-            key=lambda p: (
-                p.get("z_total") if p.get("z_total") is not None
-                else p.get(stats_source, {}).get("z_total", 0)
-            )
-        )
-        pool_size = max(1, len(sorted_bench) // 3)
-        candidates = sorted_bench[:pool_size]
-        drop_player = min(candidates, key=lambda p: (get_player_starts(p.get("name")), p.get("z_total") or 0))
-        drop_starts = get_player_starts(drop_player.get("name"))
-        roster_action = {
-            "type": "DROP",
-            "target_player": drop_player.get("name"),
-            "reason": f"Drop {drop_player.get('name')} ({drop_starts} start{'s' if drop_starts != 1 else ''} remaining this week)."
-        }
-
-    # 4. Filter Candidate Free Agents
+    # 3. Filter Candidate Free Agents first to establish the Free Agent Z-score baseline
     if all_rostered_names is None:
         all_rostered_names = set(p["name"] for p in team1.get("players", []) + team2.get("players", []))
     else:
@@ -905,6 +876,82 @@ def get_streamer_recommendations(
         reverse=True
     )
     top_fa_pool = fa_candidates[:60]
+
+    top_fa_zs = [
+        float(x[2].get("z_total"))
+        for x in top_fa_pool[:5]
+        if x[2].get("z_total") is not None
+    ]
+    fa_benchmark_z = float(np.mean(top_fa_zs)) if top_fa_zs else -3.5
+
+    def get_player_z(p):
+        val = (
+            p.get("z_total")
+            if p.get("z_total") is not None
+            else p.get(stats_source, {}).get("z_total")
+            if p.get(stats_source, {}).get("z_total") is not None
+            else p.get("ema_stats", {}).get("z_total")
+        )
+        return float(val) if val is not None else 0.0
+
+    # 4. Identify Roster Action (IR Stash vs Free-Agent-Compared Drop)
+    if active_or_bench_injured and open_il_slots > 0:
+        stashed_player = active_or_bench_injured[0]
+        roster_action = {
+            "type": "MOVE_TO_IR",
+            "target_player": stashed_player.get("name"),
+            "reason": f"Move {stashed_player.get('name')} ({stashed_player.get('status')}) to open IL slot (0 drops required)."
+        }
+        drop_player = None
+        drop_starts = 0
+    else:
+        t1_players = [
+            p for p in team1.get("players", [])
+            if p.get("selected_position") not in ("IL", "IL+", "NA")
+        ] or team1.get("players", [])
+
+        sorted_bench = sorted(t1_players, key=get_player_z)
+        fa_comparable_drops = [
+            p for p in sorted_bench
+            if get_player_z(p) <= fa_benchmark_z + 1.25
+        ]
+
+        if fa_comparable_drops:
+            drop_player = min(
+                fa_comparable_drops,
+                key=lambda p: (get_player_starts(p.get("name")), get_player_z(p))
+            )
+            drop_starts = get_player_starts(drop_player.get("name"))
+            drop_z = get_player_z(drop_player)
+            roster_action = {
+                "type": "DROP",
+                "target_player": drop_player.get("name"),
+                "drop_z": round(drop_z, 2),
+                "fa_benchmark_z": round(fa_benchmark_z, 2),
+                "reason": (
+                    f"Drop {drop_player.get('name')} (Z: {drop_z:+.2f}, {drop_starts} start{'s' if drop_starts != 1 else ''} left) "
+                    f"— comparable to top Free Agents (Z: {fa_benchmark_z:+.2f})."
+                )
+            }
+        else:
+            pool_size = max(1, len(sorted_bench) // 3)
+            candidates = sorted_bench[:pool_size]
+            drop_player = min(
+                candidates,
+                key=lambda p: (get_player_starts(p.get("name")), get_player_z(p))
+            )
+            drop_starts = get_player_starts(drop_player.get("name"))
+            drop_z = get_player_z(drop_player)
+            roster_action = {
+                "type": "HOLD_WARNING",
+                "target_player": drop_player.get("name"),
+                "drop_z": round(drop_z, 2),
+                "fa_benchmark_z": round(fa_benchmark_z, 2),
+                "reason": (
+                    f"No clear drop: lowest bench player {drop_player.get('name')} (Z: {drop_z:+.2f}, {drop_starts} start{'s' if drop_starts != 1 else ''} left) "
+                    f"ranks above top Free Agents (Z: {fa_benchmark_z:+.2f}). Only stream if crucial for this week."
+                )
+            }
 
     # 5. NBA Schedule & Lineup Slot Availability
     sched = nba_schedule.copy()

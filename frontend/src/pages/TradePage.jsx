@@ -114,7 +114,7 @@ function AssetExchangeGrid({ stats }) {
 
 // ─── Player Selector ──────────────────────────────────
 
-function PlayerSelector({ label, badge, allPlayers, selected, onToggle, badge_class = 'badge-orange' }) {
+function PlayerSelector({ label, badge, allPlayers, selected, onToggle, badge_class = 'badge-orange', faBaselineZ = null }) {
   const [search, setSearch] = useState('');
   const filtered = allPlayers.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -136,6 +136,7 @@ function PlayerSelector({ label, badge, allPlayers, selected, onToggle, badge_cl
         {filtered.slice(0, 30).map(p => {
           const isSelected = selected.has(p.name);
           const zVal = p.z_total ?? p.zSum;
+          const vorp = zVal != null && faBaselineZ != null ? zVal - faBaselineZ : null;
           return (
             <button
               key={p.name}
@@ -148,8 +149,11 @@ function PlayerSelector({ label, badge, allPlayers, selected, onToggle, badge_cl
               </div>
               <div className="sp-right">
                 {zVal != null && (
-                  <span className={`sp-z ${zScoreClass(zVal)}`} title="Total Z-Score">
-                    Z: {formatZ(zVal)}
+                  <span
+                    className={`sp-z ${vorp != null ? (vorp >= 0 ? zScoreClass(Math.max(0.1, zVal)) : 'z-bad') : zScoreClass(zVal)}`}
+                    title={vorp != null ? `Raw Z: ${formatZ(zVal)} | Value vs Free Agent (${formatZ(faBaselineZ)} Z): ${vorp >= 0 ? '+' : ''}${vorp.toFixed(2)} Z` : 'Total Z-Score'}
+                  >
+                    Z: {formatZ(zVal)}{vorp != null ? ` (${vorp >= 0 ? '+' : ''}${vorp.toFixed(1)} vs FA)` : ''}
                   </span>
                 )}
                 {isSelected && <span className="sp-check">✓</span>}
@@ -237,17 +241,50 @@ export default function TradePage() {
     return allLeaguePlayers.filter(p => playersIn.has(p.name));
   }, [allLeaguePlayers, playersIn]);
 
-  // Direct asset Z-scores
-  const totalOutZ = useMemo(() => {
-    return outList.reduce((s, p) => s + (p.z_total ?? p.zSum ?? 0), 0);
-  }, [outList]);
+  // Free Agent / Waiver replacement baseline Z-score
+  // Standardized league Z-scores have mean 0.00 (avg starter ~Rank #65),
+  // so bottom-of-bench players (~Rank #110–150) have negative raw Z-scores (-1.5 to -3.5)
+  // while still holding positive value above Free Agent replacement level.
+  const faBaseline = useMemo(() => {
+    const activePool = allLeaguePlayers.filter(
+      p => p.selected_position !== 'IL' && p.selected_position !== 'NA'
+    );
+    const sorted = [...activePool].sort(
+      (a, b) => (a.z_total ?? a.zSum ?? 0) - (b.z_total ?? b.zSum ?? 0)
+    );
+    const bottomCount = Math.max(5, Math.floor(sorted.length * 0.1));
+    const bottomSlice = sorted.slice(0, bottomCount);
 
-  const totalInZ = useMemo(() => {
-    return inList.reduce((s, p) => s + (p.z_total ?? p.zSum ?? 0), 0);
-  }, [inList]);
+    const avgBottomZ = bottomSlice.length
+      ? bottomSlice.reduce((s, p) => s + (p.z_total ?? p.zSum ?? 0), 0) / bottomSlice.length
+      : -3.5;
 
-  // Net Asset Delta (Direct exchange value)
-  const directZDelta = totalInZ - totalOutZ;
+    const minRosterZ = currentRoster.length
+      ? Math.min(...currentRoster.map(p => p.z_total ?? p.zSum ?? 0))
+      : -3.0;
+
+    // Waiver replacement baseline sits below the bottom rostered fringe
+    const z = Math.min(avgBottomZ - 0.35, minRosterZ - 0.5, -2.5);
+
+    return {
+      z,
+      ema_stats: {
+        mu_min: 22,
+        games_played: 62,
+        mu_pts: 9.5,
+        mu_reb: 4.2,
+        mu_ast: 2.0,
+        mu_stl: 0.7,
+        mu_blk: 0.4,
+        mu_tov: 1.2,
+        mu_fg3m: 1.1,
+        mu_fgm: 3.5,
+        mu_fga: 8.0,
+        mu_ftm: 1.1,
+        mu_fta: 1.5,
+      },
+    };
+  }, [allLeaguePlayers, currentRoster]);
 
   // Uneven roster management
   const sizeDiff = inList.length - outList.length;
@@ -269,32 +306,56 @@ export default function TradePage() {
     return new Set(dropCandidates.map(p => p.name));
   }, [dropCandidates]);
 
-  // If giving more than receiving (sizeDiff < 0), fill open roster spot(s) with replacement level streamer
+  // If giving more than receiving (sizeDiff < 0), fill open roster spot(s) with Free Agent replacement level
   const streamerFillers = useMemo(() => {
     if (sizeDiff >= 0) return [];
     const needed = Math.abs(sizeDiff);
     return Array.from({ length: needed }, (_, i) => ({
       name: `Waiver / Streamer Slot ${needed > 1 ? i + 1 : ''}`.trim(),
       selected_position: 'Util',
-      z_total: 0,
-      zSum: 0,
-      ema_stats: {
-        mu_min: 24,
-        games_played: 65,
-        mu_pts: 10.0,
-        mu_reb: 4.5,
-        mu_ast: 2.2,
-        mu_stl: 0.8,
-        mu_blk: 0.5,
-        mu_tov: 1.2,
-        mu_fg3m: 1.2,
-        mu_fgm: 3.8,
-        mu_fga: 8.5,
-        mu_ftm: 1.2,
-        mu_fta: 1.6,
-      },
+      z_total: faBaseline.z,
+      zSum: faBaseline.z,
+      ema_stats: faBaseline.ema_stats,
     }));
-  }, [sizeDiff]);
+  }, [sizeDiff, faBaseline]);
+
+  // Raw selected Z-scores
+  const rawOutZ = useMemo(() => {
+    return outList.reduce((s, p) => s + (p.z_total ?? p.zSum ?? 0), 0);
+  }, [outList]);
+
+  const rawInZ = useMemo(() => {
+    return inList.reduce((s, p) => s + (p.z_total ?? p.zSum ?? 0), 0);
+  }, [inList]);
+
+  // Value Over Free Agent Replacement (VORP = Z - Z_FA)
+  const totalOutVorp = useMemo(() => {
+    const selectedVorp = outList.reduce((s, p) => s + ((p.z_total ?? p.zSum ?? 0) - faBaseline.z), 0);
+    const dropVorp = sizeDiff > 0
+      ? dropCandidates.reduce((s, p) => s + ((p.z_total ?? p.zSum ?? faBaseline.z) - faBaseline.z), 0)
+      : 0;
+    return selectedVorp + dropVorp;
+  }, [outList, dropCandidates, sizeDiff, faBaseline.z]);
+
+  const totalInVorp = useMemo(() => {
+    return inList.reduce((s, p) => s + ((p.z_total ?? p.zSum ?? 0) - faBaseline.z), 0);
+  }, [inList, faBaseline.z]);
+
+  // Balanced slot Z-scores (comparing equal roster slots against FA baseline / forced drops)
+  const totalOutZ = useMemo(() => {
+    const dropZ = sizeDiff > 0
+      ? dropCandidates.reduce((s, p) => s + (p.z_total ?? p.zSum ?? faBaseline.z), 0)
+      : 0;
+    return rawOutZ + dropZ;
+  }, [rawOutZ, sizeDiff, dropCandidates, faBaseline.z]);
+
+  const totalInZ = useMemo(() => {
+    const waiverZ = sizeDiff < 0 ? Math.abs(sizeDiff) * faBaseline.z : 0;
+    return rawInZ + waiverZ;
+  }, [rawInZ, sizeDiff, faBaseline.z]);
+
+  // Net Asset Delta (Balanced exchange value vs Free Agent replacement)
+  const directZDelta = totalInZ - totalOutZ;
 
   // Balanced hypothetical roster (exactly matching currentRoster.length)
   const balancedHypotheticalRoster = useMemo(() => {
@@ -417,6 +478,7 @@ export default function TradePage() {
               allPlayers={currentRoster}
               selected={playersOut}
               onToggle={toggleOut}
+              faBaselineZ={faBaseline.z}
             />
             <PlayerSelector
               label={mode === 'trade' ? 'Players you receive' : 'Free agents to pick up'}
@@ -425,6 +487,7 @@ export default function TradePage() {
               allPlayers={mode === 'trade' ? allLeaguePlayers.filter(p => !new Set(myTeam.players.map(x => x.name)).has(p.name)) : freeAgents}
               selected={playersIn}
               onToggle={toggleIn}
+              faBaselineZ={faBaseline.z}
             />
           </div>
 
@@ -448,10 +511,10 @@ export default function TradePage() {
               <div className="trade-balance-alert info">
                 <span className="tba-icon">💡</span>
                 <div>
-                  <strong>Consolidation Trade ({outList.length} out, {inList.length} in):</strong>
-                  <span> Giving {outList.length} players for {inList.length} frees up {Math.abs(sizeDiff)} roster spot{Math.abs(sizeDiff) > 1 ? 's' : ''} for daily streaming or waiver pickups.</span>
+                  <strong>{inList.length === 0 ? `Unpaired Drop (${outList.length} out, 0 in):` : `Consolidation Trade (${outList.length} out, ${inList.length} in):`}</strong>
+                  <span> Giving {outList.length} player{outList.length > 1 ? 's' : ''} for {inList.length} leaves {Math.abs(sizeDiff)} open roster spot{Math.abs(sizeDiff) > 1 ? 's' : ''} filled at the Free Agent replacement baseline.</span>
                   <div className="tba-sub">
-                    Projections include replacement waiver streamer ({Math.abs(sizeDiff)} spot{Math.abs(sizeDiff) > 1 ? 's' : ''}, Z: 0.0) for an equal roster comparison.
+                    Compared against Free Agent replacement baseline ({Math.abs(sizeDiff)} spot{Math.abs(sizeDiff) > 1 ? 's' : ''}, Z: {formatZ(faBaseline.z)} each) so rostered players above waiver level retain positive value.
                   </div>
                 </div>
               </div>
@@ -459,23 +522,29 @@ export default function TradePage() {
 
             {/* Direct Z-Score Impact */}
             <div className={`impact-summary card ${hasChanges ? (directZDelta >= 0 ? 'impact-positive' : 'impact-negative') : ''}`}>
-              <div className="impact-label">Net Asset Z-Score Value</div>
+              <div className="impact-label">Net Exchange Value (vs. Free Agent Baseline)</div>
               {hasChanges ? (
                 <>
                   <div className={`impact-delta ${directZDelta >= 0 ? 'z-elite' : 'z-bad'}`}>
-                    {directZDelta >= 0 ? '+' : ''}{directZDelta.toFixed(2)}
+                    {directZDelta >= 0 ? '+' : ''}{directZDelta.toFixed(2)} Z
                   </div>
                   <div className="impact-sub">
-                    <span>Gaining: <strong>{totalInZ.toFixed(2)} Z</strong> ({inList.length} player{inList.length !== 1 ? 's' : ''})</span>
+                    <span>
+                      Gaining: <strong>+{totalInVorp.toFixed(2)} vs FA</strong> (Raw: {rawInZ.toFixed(2)} Z{sizeDiff < 0 ? ` + ${Math.abs(sizeDiff)} FA @ ${formatZ(faBaseline.z)}` : ''})
+                    </span>
                     <span className="impact-sub-sep">·</span>
-                    <span>Giving: <strong>{totalOutZ.toFixed(2)} Z</strong> ({outList.length} player{outList.length !== 1 ? 's' : ''})</span>
+                    <span>
+                      Giving: <strong>+{totalOutVorp.toFixed(2)} vs FA</strong> (Raw: {rawOutZ.toFixed(2)} Z{sizeDiff > 0 ? ` + ${sizeDiff} Drop` : ''})
+                    </span>
                   </div>
                   <div className={`impact-verdict ${directZDelta >= 0 ? 'good' : 'bad'}`}>
-                    {directZDelta >= 2.5 ? '🌟 Strongly Recommended (Major Win)' :
-                     directZDelta >= 0.5 ? '✓ Favorable Trade (Solid Upgrade)' :
-                     directZDelta >= -0.5? '⚖️ Fair / Even Trade (Balanced Exchange)' :
-                     directZDelta >= -2.5? '✗ Unfavorable Trade (Losing Value)' :
-                                           '⛔ Avoid This Trade (Heavy Value Loss)'}
+                    {inList.length === 0 && outList.length > 0
+                      ? `✗ Losing +${totalOutVorp.toFixed(2)} Z above Free Agent level — Select an incoming player or FA to compare`
+                      : directZDelta >= 2.5 ? '🌟 Strongly Recommended (Major Win)' :
+                        directZDelta >= 0.5 ? '✓ Favorable Exchange (Solid Upgrade)' :
+                        directZDelta >= -0.5? '⚖️ Fair / Even Exchange (Balanced Value)' :
+                        directZDelta >= -2.5? '✗ Unfavorable Exchange (Losing Value)' :
+                                              '⛔ Avoid This Move (Heavy Value Loss)'}
                   </div>
                 </>
               ) : (
@@ -532,52 +601,60 @@ export default function TradePage() {
             {/* Player z-score cards */}
             {hasChanges && (
               <div className="player-delta-panel card">
-                <div className="impact-cats-header">Player Z-Score Breakdown</div>
+                <div className="impact-cats-header">Player Z-Score Breakdown (FA Baseline: {formatZ(faBaseline.z)} Z)</div>
                 <div className="player-delta-grid">
-                  {outList.map(p => (
-                    <div key={p.name} className="player-delta-card losing">
-                      <div className="pd-top">
-                        <span className="pd-badge badge badge-red">Giving Up</span>
-                        <span className="pd-zsum z-bad">
-                          Z: {formatZ(p.z_total ?? p.zSum)}
-                        </span>
+                  {outList.map(p => {
+                    const rawZ = p.z_total ?? p.zSum ?? 0;
+                    const vorp = rawZ - faBaseline.z;
+                    return (
+                      <div key={p.name} className="player-delta-card losing">
+                        <div className="pd-top">
+                          <span className="pd-badge badge badge-red">Giving Up</span>
+                          <span className="pd-zsum z-bad" title={`Raw Z: ${formatZ(rawZ)} | Value vs Free Agent: ${vorp >= 0 ? '+' : ''}${vorp.toFixed(2)} Z`}>
+                            {vorp >= 0 ? '+' : ''}{vorp.toFixed(2)} vs FA (Z: {formatZ(rawZ)})
+                          </span>
+                        </div>
+                        <span className="pd-name">{p.name}</span>
+                        <span className="pd-team-pos">{p.nba_team} · {p.selected_position ?? p.positions}</span>
+                        <div className="pd-cats">
+                          {CATEGORIES.map(cat => {
+                            const z = p.zScores?.[cat.key] ?? null;
+                            return (
+                              <span key={cat.key} className={`pd-cat-z ${zScoreClass(z)}`} title={cat.label}>
+                                {cat.key}: {z !== null ? formatZ(z) : '—'}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <span className="pd-name">{p.name}</span>
-                      <span className="pd-team-pos">{p.nba_team} · {p.selected_position ?? p.positions}</span>
-                      <div className="pd-cats">
-                        {CATEGORIES.map(cat => {
-                          const z = p.zScores?.[cat.key] ?? null;
-                          return (
-                            <span key={cat.key} className={`pd-cat-z ${zScoreClass(z)}`} title={cat.label}>
-                              {cat.key}: {z !== null ? formatZ(z) : '—'}
-                            </span>
-                          );
-                        })}
+                    );
+                  })}
+                  {inList.map(p => {
+                    const rawZ = p.z_total ?? p.zSum ?? 0;
+                    const vorp = rawZ - faBaseline.z;
+                    return (
+                      <div key={p.name} className="player-delta-card gaining">
+                        <div className="pd-top">
+                          <span className="pd-badge badge badge-green">Receiving</span>
+                          <span className="pd-zsum z-elite" title={`Raw Z: ${formatZ(rawZ)} | Value vs Free Agent: ${vorp >= 0 ? '+' : ''}${vorp.toFixed(2)} Z`}>
+                            {vorp >= 0 ? '+' : ''}{vorp.toFixed(2)} vs FA (Z: {formatZ(rawZ)})
+                          </span>
+                        </div>
+                        <span className="pd-name">{p.name}</span>
+                        <span className="pd-team-pos">{p.nba_team} · {p.selected_position ?? p.positions}</span>
+                        <div className="pd-cats">
+                          {CATEGORIES.map(cat => {
+                            const z = p.zScores?.[cat.key] ?? null;
+                            return (
+                              <span key={cat.key} className={`pd-cat-z ${zScoreClass(z)}`} title={cat.label}>
+                                {cat.key}: {z !== null ? formatZ(z) : '—'}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  {inList.map(p => (
-                    <div key={p.name} className="player-delta-card gaining">
-                      <div className="pd-top">
-                        <span className="pd-badge badge badge-green">Receiving</span>
-                        <span className="pd-zsum z-elite">
-                          Z: {formatZ(p.z_total ?? p.zSum)}
-                        </span>
-                      </div>
-                      <span className="pd-name">{p.name}</span>
-                      <span className="pd-team-pos">{p.nba_team} · {p.selected_position ?? p.positions}</span>
-                      <div className="pd-cats">
-                        {CATEGORIES.map(cat => {
-                          const z = p.zScores?.[cat.key] ?? null;
-                          return (
-                            <span key={cat.key} className={`pd-cat-z ${zScoreClass(z)}`} title={cat.label}>
-                              {cat.key}: {z !== null ? formatZ(z) : '—'}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
