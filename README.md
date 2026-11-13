@@ -12,46 +12,41 @@ A full-stack analytics workbench for Yahoo Fantasy Basketball 9-category head-to
 ## System Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Ingestion["1. Data Ingestion"]
-        NBA["nba_api (Local launchd Daemon - 03:00 AM)<br/>Game Logs, Schedule, Player Bios"]
-        FP["FantasyPros Scraper<br/>Preseason, ROS, and Weekly Projections"]
+flowchart LR
+    subgraph Sources["Data Sources"]
+        NBA["nba_api (Local 03:00 AM)\nLogs, Schedule, Bios"]
+        FP["FantasyPros Scraper\nPreseason, ROS & Weekly"]
     end
 
-    subgraph Lakehouse["2. Databricks Lakehouse (nba_fantasy Unity Catalog - 03:15 AM)"]
-        direction LR
-        Bronze[("Bronze Layer<br/>Raw UC Volumes & Tables")]
-        Silver[("Silver Layer<br/>Auto Loader Streaming &<br/>Typed/Deduplicated Tables")]
-        Gold[("Gold Layer<br/>ML Zero-State Priors, Intra-Season EMA,<br/>Iterative Z-Score Rankings & Schedule")]
+    subgraph Databricks["Databricks Lakehouse (03:15 AM)"]
+        Bronze[("Bronze\nRaw Volumes & Tables")]
+        Silver[("Silver\nCleaned & Deduplicated")]
+        Gold[("Gold\nML Priors, EMA & Z-Scores")]
         Bronze --> Silver --> Gold
     end
 
-    subgraph App["3. Application Stack (Docker Compose)"]
-        Yahoo["Yahoo Fantasy Sports API<br/>(yfpy + OAuth2)"]
-        Backend["FastAPI Backend (:8000)<br/>In-Memory Gold Cache (03:30 AM Sync)<br/>SciPy Lineup Solver & Matchup/Streamer Engines"]
-        Frontend["React 18 SPA (:5500 Nginx / :5173 Vite)<br/>Team & League Analytics, Matchup Simulator,<br/>Streamer Finder, Trade & Draft Tools"]
+    subgraph App["Application Stack"]
+        Backend["FastAPI Backend (:8000)\n03:30 AM Cache Sync\nLineup & Matchup Engines"]
+        Yahoo["Yahoo Fantasy API\nyfpy + OAuth2"]
+        Frontend["React 18 SPA\nAnalytics, Matchup,\nStreamers, Trade & Draft"]
+        Yahoo <-->|"Live Rosters & Scores"| Backend
+        Backend <-->|"/api/v1/*"| Frontend
     end
 
-    NBA -->|"Parquet Upload"| Bronze
-    FP -->|"Scheduled Notebook"| Bronze
-    Gold -->|"Startup & 03:30 AM SQL Sync"| Backend
-    Yahoo <-->|"Live Rosters, Free Agents & Scoreboard"| Backend
-    Frontend <-->|"REST API (/api/v1/*)"| Backend
-
-    style Bronze fill:#cd7f32,color:#fff
-    style Silver fill:#c0c0c0,color:#222
-    style Gold fill:#ffd700,color:#222
+    NBA -->|"Parquet"| Bronze
+    FP -->|"Notebook"| Bronze
+    Gold -->|"SQL Sync"| Backend
 ```
 
 ### Data Pipeline & Statistical Modeling
 
-The data and modeling layer runs on a staggered daily schedule (`03:00 AM` local ingestion → `03:15 AM` Databricks ETL → `03:30 AM` backend cache sync):
+The data and modeling layer runs on a staggered daily schedule (`03:00 AM` local ingestion -> `03:15 AM` Databricks ETL -> `03:30 AM` backend cache sync):
 
 1. **Bronze Ingestion (`nba_fantasy.bronze` & UC Volumes):** Because `stats.nba.com` blocks cloud data-center IPs, a scheduled local `launchd` job (`data_eng/`) extracts completed daily game logs, weekly schedules, and player bio data from `nba_api` at 03:00 AM and uploads Parquet files to Databricks Unity Catalog Volumes. In parallel, a Databricks notebook scrapes FantasyPros preseason, rest-of-season (ROS), and weekly projections into Bronze tables.
 2. **Silver Cleansing (`nba_fantasy.silver`):** Databricks Auto Loader streams incremental game logs into `nba_game_logs`, while batch pipelines deduplicate and type-cast (`try_cast`) schedules, bios, and projections into Silver tables.
 3. **Gold Projections & Iterative Z-Score Rankings (`nba_fantasy.gold`):**
-   - **Preseason Zero-State Baseline:** Historical season priors (`player_season_priors`) and FantasyPros projections feed log-linear / MLflow variance models (`zero_state_projections`) to predict each player's baseline per-game mean ($\mu_0$) and variance ($\sigma_0^2$) across all 9 categories, plus shooting makes and attempts.
-   - **Intra-Season EMA Updates:** At 03:15 AM daily, `ema_gold` updates player means and variances from new game logs using an Exponential Moving Average ($\mu_t = (1 - \alpha)\mu_{t-1} + \alpha x_t$) and credibility-weighted variance blending. Season rollovers are tracked via the `ema.last_season_id` Delta table property.
+   - **Preseason Zero-State Baseline:** Historical season priors (`player_season_priors`) and FantasyPros projections feed log-linear / MLflow variance models (`zero_state_projections`) to predict each player's baseline per-game mean and variance across all 9 categories, plus shooting makes and attempts.
+   - **Intra-Season EMA Updates:** At 03:15 AM daily, `ema_gold` updates player means and variances from new game logs using an Exponential Moving Average (`μ_t = (1 - α) * μ_{t-1} + α * x_t`) and credibility-weighted variance blending. Season rollovers are tracked via the `ema.last_season_id` Delta table property.
    - **Iterative Z-Score Convergence:** Preseason, ROS, and weekly rankings are computed via `rerank_until_stable`, which iteratively recomputes category Z-scores (including volume-weighted FG% and FT% impact) until the top player pool stabilizes.
 4. **Matchup, Lineup & Streamer Simulation (FastAPI Backend):**
    - **Optimal Lineup Solver:** Uses the Hungarian algorithm (`scipy.optimize.linear_sum_assignment`) to assign active roster slots (`PG`, `SG`, `G`, `SF`, `PF`, `F`, `C`, `Util`) for each remaining day of the matchup week.
