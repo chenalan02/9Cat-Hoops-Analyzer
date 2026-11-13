@@ -36,6 +36,10 @@ flowchart TD
     NBA -->|"Parquet"| Bronze
     FP -->|"Notebook"| Bronze
     Gold -->|"SQL Sync"| Backend
+
+    style Bronze fill:#cd7f32,stroke:#a05a1c,color:#ffffff
+    style Silver fill:#c0c0c0,stroke:#8c8c8c,color:#111111
+    style Gold fill:#ffd700,stroke:#c5a600,color:#111111
 ```
 
 ### Data Pipeline & Statistical Modeling
