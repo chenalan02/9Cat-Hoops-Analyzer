@@ -1,5 +1,14 @@
 import { useState, useMemo } from 'react';
-import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import {
+  CATEGORIES,
+  getPlayerMu,
+  getPlayerStatsObject,
+  getPlayerZScore,
+  getPlayerTotalZ,
+  buildLeagueMuMap,
+  zScoreClass,
+  zScoreBgClass
+} from '../utils/zScore.js';
 import { formatMu, formatZ, formatDelta } from '../utils/formatters.js';
 import './TeamTable.css';
 
@@ -11,8 +20,9 @@ import './TeamTable.css';
  *   puntedCats:  Set<string>
  *   allTeams:    Team[]    — full league for z-score recompute on punt
  *   baselinePlayers: Player[] — players ranked without punt (for delta)
+ *   statsSource: 'ema' | 'weekly' | 'ros' — active projection source
  */
-export default function TeamTable({ players, puntedCats, allTeams, baselinePlayers }) {
+export default function TeamTable({ players, puntedCats, allTeams, baselinePlayers, statsSource = 'ema' }) {
   const [sortKey, setSortKey] = useState('rank');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -22,9 +32,9 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
   );
 
   // 1. Dynamic league-wide ranking & baseline calculation
-  const { rankedPlayers, baselineRankMap } = useMemo(() => {
+  const { rankedPlayers, baselineRankMap, catStats } = useMemo(() => {
     if (!players || players.length === 0) {
-      return { rankedPlayers: [], baselineRankMap: {} };
+      return { rankedPlayers: [], baselineRankMap: {}, catStats: {} };
     }
 
     // Collect all unique rostered players across the entire league
@@ -43,13 +53,26 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       return map.size > 0 ? Array.from(map.values()) : players;
     })();
 
-    // Helper: calculate Z-score sum across specified categories
+    // Compute league-wide category stats for the selected statsSource
+    const leagueMuMap = buildLeagueMuMap(leaguePlayers, statsSource);
+    const computedCatStats = {};
+    for (const cat of CATEGORIES) {
+      const vals = leagueMuMap[cat.key] || [];
+      const m = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      const variance = vals.length > 1 ? vals.reduce((a, b) => a + (b - m) ** 2, 0) / (vals.length - 1) : 1;
+      computedCatStats[cat.key] = { mean: m, std: Math.sqrt(variance) || 1 };
+    }
+
+    // Helper: calculate Z-score sum across specified categories for a player given statsSource
     const getZForCats = (p, cats) => {
       if (cats.length === CATEGORIES.length) {
-        const rawZ = p.z_total ?? p.ema_stats?.z_total;
+        const rawZ = getPlayerTotalZ(p, statsSource);
         if (rawZ != null && !isNaN(rawZ)) return Number(rawZ);
       }
-      return cats.reduce((sum, cat) => sum + (p.zScores?.[cat.key] ?? 0), 0);
+      return cats.reduce((sum, cat) => {
+        const z = getPlayerZScore(p, cat, statsSource, computedCatStats[cat.key]?.mean, computedCatStats[cat.key]?.std);
+        return sum + (z ?? 0);
+      }, 0);
     };
 
     // 2. Baseline League Ranking (all 9 categories active)
@@ -82,7 +105,8 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
 
     // 4. Augment YOUR team's players with their league rank & delta
     const teamRanked = players.map(p => {
-      const leagueRank = cMap[p.name] ?? (p.rank || 999);
+      const s = getPlayerStatsObject(p, statsSource);
+      const leagueRank = cMap[p.name] ?? (s?.rank || p.rank || 999);
       const baseRank = bMap[p.name] ?? leagueRank;
       const zSum = cZSumMap[p.name] ?? getZForCats(p, activeCats);
       const delta = baseRank - leagueRank; // e.g. base #20, now #12 => delta +8 (improved!)
@@ -95,8 +119,8 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       };
     });
 
-    return { rankedPlayers: teamRanked, baselineRankMap: bMap };
-  }, [players, allTeams, activeCats]);
+    return { rankedPlayers: teamRanked, baselineRankMap: bMap, catStats: computedCatStats };
+  }, [players, allTeams, activeCats, statsSource]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -104,10 +128,17 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       let av, bv;
       if (sortKey === 'rank') { av = a.rank; bv = b.rank; }
       else if (sortKey === 'name') { av = a.name; bv = b.name; }
-      else if (sortKey === 'gp') { av = a.ema_stats?.games_played ?? 0; bv = b.ema_stats?.games_played ?? 0; }
+      else if (sortKey === 'gp') {
+        const sA = getPlayerStatsObject(a, statsSource);
+        const sB = getPlayerStatsObject(b, statsSource);
+        av = sA?.games_played ?? 0;
+        bv = sB?.games_played ?? 0;
+      }
       else if (sortKey === 'proj_gp') {
-        const aVal = Number(a.ema_stats?.proj_games_preseason ?? a.preseason_stats?.proj_games_preseason ?? a.ros_stats?.proj_games_played ?? a.proj_games_preseason ?? a.proj_games_played ?? 0) || 0;
-        const bVal = Number(b.ema_stats?.proj_games_preseason ?? b.preseason_stats?.proj_games_preseason ?? b.ros_stats?.proj_games_played ?? b.proj_games_preseason ?? b.proj_games_played ?? 0) || 0;
+        const sA = getPlayerStatsObject(a, statsSource);
+        const sB = getPlayerStatsObject(b, statsSource);
+        const aVal = Number(sA?.proj_games_played ?? sA?.proj_games_preseason ?? a.proj_games_preseason ?? a.proj_games_played ?? 0) || 0;
+        const bVal = Number(sB?.proj_games_played ?? sB?.proj_games_preseason ?? b.proj_games_preseason ?? b.proj_games_played ?? 0) || 0;
         av = aVal;
         bv = bVal;
       }
@@ -115,13 +146,13 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       else {
         // category mu
         const cat = CATEGORIES.find(c => c.key === sortKey);
-        av = cat ? (getPlayerMu(a, cat) ?? -999) : 0;
-        bv = cat ? (getPlayerMu(b, cat) ?? -999) : 0;
+        av = cat ? (getPlayerMu(a, cat, statsSource) ?? -999) : 0;
+        bv = cat ? (getPlayerMu(b, cat, statsSource) ?? -999) : 0;
       }
       if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === 'asc' ? av - bv : bv - av;
     });
-  }, [rankedPlayers, sortKey, sortDir]);
+  }, [rankedPlayers, sortKey, sortDir, statsSource]);
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -197,27 +228,38 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
                 <td>
                   <div className="player-cell">
                     <span className="player-name">{player.name}</span>
+                    {player.status && (
+                      <span className={`status-tag ${['O', 'INJ', 'OUT', 'IL', 'IL+', 'IR', 'IR+'].includes(String(player.status).toUpperCase()) ? 'status-il' : 'status-q'}`}>
+                        {player.status}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td>
-                  <span className="pos-badge">{player.selected_position}</span>
+                  <span className={`pos-badge ${['IL', 'IL+', 'IR', 'IR+'].includes(player.selected_position) ? 'pos-il' : ''}`}>
+                    {player.selected_position}
+                  </span>
                 </td>
                 <td className="team-abbr">{player.nba_team}</td>
-                <td>{player.ema_stats?.games_played ?? '—'}</td>
+                <td>{(() => {
+                  const s = getPlayerStatsObject(player, statsSource);
+                  return s?.games_played ?? '—';
+                })()}</td>
                 <td>
                   {(() => {
-                    const raw = player.ema_stats?.proj_games_preseason
+                    const s = getPlayerStatsObject(player, statsSource);
+                    const raw = s?.proj_games_played
+                      ?? s?.proj_games_preseason
                       ?? player.preseason_stats?.proj_games_preseason
                       ?? player.ros_stats?.proj_games_played
-                      ?? player.ros_stats?.proj_games
                       ?? player.proj_games_preseason
                       ?? player.proj_games_played;
                     return raw != null && !isNaN(raw) ? Math.round(Number(raw)) : '—';
                   })()}
                 </td>
                 {CATEGORIES.map(cat => {
-                  const mu = getPlayerMu(player, cat);
-                  const z = player.zScores?.[cat.key] ?? null;
+                  const mu = getPlayerMu(player, cat, statsSource);
+                  const z = getPlayerZScore(player, cat, statsSource, catStats?.[cat.key]?.mean, catStats?.[cat.key]?.std);
                   const punted = puntedCats.has(cat.key);
                   return (
                     <td

@@ -47,12 +47,12 @@ const SECTIONS = [
   },
   {
     icon: '',
-    title: 'Draft Rankings',
-    content: `Draft rankings are computed using the same z-score methodology — each player is
-    ranked by the sum of their z-scores across active categories. Toggling categories on the
-    Draft page re-ranks players instantly, showing you the best available at each position
-    for your specific punt strategy. Future versions will include a live draft assistant
-    that tracks picks in real time.`,
+    title: 'Draft Assistant',
+    content: `Draft rankings evaluate the full NBA player pool from Databricks projections (Preseason,
+    ROS, or EMA) without needing a pre-loaded Yahoo league. Toggle punts or select presets anytime
+    to re-rank all players instantly, use the Mid-Draft Punt Advisor after your 1st pick to uncover
+    optimal build paths, and get turn-aware recommendations factoring in positional slot fit,
+    category needs, and upcoming position cliffs.`,
   },
 ];
 

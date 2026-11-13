@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,7 +21,9 @@ from backend.models import *
 from backend.analysis import (
     matchup_analysis_monte_carlo,
     matchup_analysis as run_matchup_analysis_calc,
-    get_streamer_recommendations
+    get_streamer_recommendations,
+    get_top_free_agents,
+    get_draft_pool,
 )
 
 load_dotenv()
@@ -109,7 +112,7 @@ class MatchupRequest(BaseModel):
     team2: dict
     week_num: int
     date_start: str
-    roster_positions: list
+    roster_positions: list | None = None
     stats_source: str
     monte_carlo: bool = False
 
@@ -119,10 +122,52 @@ class StreamerRequest(BaseModel):
     team2: dict
     week_num: int
     date_start: str
-    roster_positions: list
+    roster_positions: list | None = None
     stats_source: str = "ema"
     all_rostered_names: list = []
     limit: int = 6
+    target_drop_player: str | None = None
+    pickup_mode: str = "week"
+    punted_cats: list[str] = []
+
+
+class FreeAgentsRequest(BaseModel):
+    league_id: str
+    stats_source: str = "ros_stats"
+    all_rostered_names: list = []
+    limit: int = 45
+
+_QUERY_LOCK = threading.Lock()
+_QUERY_CACHE = {}
+
+def get_yahoo_query(league_id: str) -> YahooFantasySportsQuery:
+    '''
+    Retrieves or creates a YahooFantasySportsQuery instance for the given league_id.
+    Reusing existing instances preserves keep-alive HTTPS connections and cached
+    league/game metadata, drastically cutting down TLS handshakes and token validations.
+    '''
+    lid = str(league_id).strip()
+    with _QUERY_LOCK:
+        q = _QUERY_CACHE.get(lid)
+        if q is not None:
+            try:
+                if q.oauth.token_is_valid():
+                    return q
+            except Exception:
+                pass
+
+        q = YahooFantasySportsQuery(
+            league_id=lid,
+            game_code="nba",
+            offline=False,
+            yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
+            yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
+            env_file_location=Path("/app/auth"),
+            save_token_data_to_env_file=False
+        )
+        _QUERY_CACHE[lid] = q
+        return q
+
 
 @app.get("/")
 def home():
@@ -137,16 +182,7 @@ def analyze_team_link(request: TeamRequest):
     league_id = link_split[-2]
     team_id = link_split[-1]
 
-    yahoo_query = YahooFantasySportsQuery(
-        league_id=league_id,
-        game_code="nba",
-        offline=False,
-        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
-        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= Path("/app/auth"),
-        save_token_data_to_env_file=False
-    )
-
+    yahoo_query = get_yahoo_query(league_id)
     league = FantasyLeague(yahoo_query, app.state.player_stats)
     return {
         "status": "success",
@@ -166,15 +202,7 @@ def matchup_analysis_endpoint(request: MatchupRequest):
     monte_carlo = request.monte_carlo
     nba_schedule = app.state.nba_schedule
 
-    yahoo_query = YahooFantasySportsQuery(
-        league_id=league_id,
-        game_code="nba",
-        offline=False,
-        yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
-        yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-        env_file_location= Path("/app/auth"),
-        save_token_data_to_env_file=False
-    )
+    yahoo_query = get_yahoo_query(league_id)
 
     if monte_carlo:
         results = matchup_analysis_monte_carlo(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule)
@@ -201,23 +229,42 @@ def streamer_recommendations_endpoint(request: StreamerRequest):
     nba_schedule = getattr(app.state, "nba_schedule", None)
 
     try:
-        yahoo_query = YahooFantasySportsQuery(
-            league_id=league_id,
-            game_code="nba",
-            offline=False,
-            yahoo_consumer_key=os.getenv("YAHOO_CONSUMER_KEY"),
-            yahoo_consumer_secret=os.getenv("YAHOO_CONSUMER_SECRET"),
-            env_file_location=Path("/app/auth"),
-            save_token_data_to_env_file=False
-        )
+        yahoo_query = get_yahoo_query(league_id)
 
-        player_stats_pool = (
-            app.state.player_stats.get(stats_source)
+        # Map frontend stats_source aliases to Databricks table keys
+        pool_key_map = {
+            "weekly_stats": "weekly_rankings",
+            "ros_stats": "ros_rankings",
+        }
+        pool_key = pool_key_map.get(stats_source, stats_source)
+
+        primary_pool = (
+            app.state.player_stats.get(pool_key, {})
             if hasattr(app.state, "player_stats") and app.state.player_stats
             else {}
         )
-        if not player_stats_pool and hasattr(app.state, "player_stats"):
-            player_stats_pool = app.state.player_stats.get("ema", {})
+        ema_pool = (
+            app.state.player_stats.get("ema", {})
+            if hasattr(app.state, "player_stats") and app.state.player_stats
+            else {}
+        )
+
+        # Merge so weekly projections take precedence, falling back to EMA for unranked waiver wire players
+        if pool_key == "weekly_rankings" and primary_pool:
+            tagged_ema = {
+                k: {**v, "is_ema_fallback": True}
+                for k, v in ema_pool.items()
+                if k not in primary_pool
+            }
+            player_stats_pool = {**tagged_ema, **primary_pool}
+        else:
+            player_stats_pool = {**ema_pool, **primary_pool}
+
+        ros_stats_pool = (
+            app.state.player_stats.get("ros_rankings", {})
+            if hasattr(app.state, "player_stats") and app.state.player_stats
+            else {}
+        )
 
         results = get_streamer_recommendations(
             yahoo_query=yahoo_query,
@@ -230,7 +277,11 @@ def streamer_recommendations_endpoint(request: StreamerRequest):
             nba_schedule=nba_schedule,
             player_stats_pool=player_stats_pool,
             all_rostered_names=all_rostered_names,
-            limit=limit
+            limit=limit,
+            target_drop_player=request.target_drop_player,
+            pickup_mode=request.pickup_mode,
+            punted_cats=request.punted_cats,
+            ros_stats_pool=ros_stats_pool,
         )
 
         return {
@@ -239,10 +290,72 @@ def streamer_recommendations_endpoint(request: StreamerRequest):
             "payload": results
         }
     except Exception as e:
-        logger.error(f"Error in streamer recommendations: {e}", exc_info=True)
+        print(f"Error in streamer recommendations: {e}")
         return {
             "status": "error",
             "message": str(e),
             "payload": None
+        }
+
+
+@app.post("/free-agents")
+def free_agents_endpoint(request: FreeAgentsRequest):
+    league_id = request.league_id
+    stats_source = request.stats_source
+    all_rostered_names = request.all_rostered_names or None
+    limit = max(1, min(int(request.limit or 45), 100))
+
+    try:
+        yahoo_query = get_yahoo_query(league_id)
+        pool_key_map = {
+            "weekly_stats": "weekly_rankings",
+            "ros_stats": "ros_rankings",
+            "preseason_stats": "preseason_rankings",
+        }
+        pool_key = pool_key_map.get(stats_source, stats_source)
+        stats_by_source = app.state.player_stats if hasattr(app.state, "player_stats") and app.state.player_stats else {}
+
+        free_agents = get_top_free_agents(
+            yahoo_query=yahoo_query,
+            player_stats_by_source=stats_by_source,
+            all_rostered_names=all_rostered_names,
+            stats_source=pool_key,
+            limit=limit,
+        )
+        return {
+            "status": "success",
+            "message": f"Loaded {len(free_agents)} top free agents.",
+            "payload": free_agents,
+        }
+    except Exception as e:
+        print(f"Error fetching free agents: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "payload": [],
+        }
+
+
+@app.get("/draft-pool")
+def draft_pool_endpoint(limit: int = 350):
+    capped_limit = max(1, min(int(limit or 350), 600))
+    try:
+        stats_by_source = (
+            app.state.player_stats
+            if hasattr(app.state, "player_stats") and app.state.player_stats
+            else {}
+        )
+        payload = get_draft_pool(stats_by_source, limit=capped_limit)
+        return {
+            "status": "success",
+            "message": f"Loaded {len(payload.get('players', []))} players for draft pool.",
+            "payload": payload,
+        }
+    except Exception as e:
+        print(f"Error loading draft pool: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "payload": {"players": [], "sources_available": [], "default_source": "preseason", "total_in_db": 0},
         }
 

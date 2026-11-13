@@ -3,7 +3,7 @@ import { CATEGORIES, computeTeamWeeklyProjection } from '../utils/zScore.js';
 import { formatMu, ordinal } from '../utils/formatters.js';
 import './LeagueWeeklyProjectionsChart.css';
 
-export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam = null }) {
+export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam = null, statsSource = 'ros' }) {
   const [activeCatKey, setActiveCatKey] = useState('PTS');
   const [projGames, setProjGames] = useState(3.5);
   const [projGamesInput, setProjGamesInput] = useState('3.5');
@@ -20,7 +20,7 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
     if (!leagueTeams.length) return [];
 
     const data = leagueTeams.map(team => {
-      const proj = computeTeamWeeklyProjection(team.players || [], projGames);
+      const proj = computeTeamWeeklyProjection(team.players || [], projGames, statsSource);
       const catProj = proj[activeCatKey];
       
       const mu = catProj?.mu ?? 0;

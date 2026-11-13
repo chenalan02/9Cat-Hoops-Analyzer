@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
 import { CATEGORIES } from '../utils/zScore.js';
 import { formatMu, formatPct } from '../utils/formatters.js';
-import { MOCK_MATCHUP_ANALYSIS, MOCK_STREAMER_RECOMMENDATIONS } from '../utils/mockData.js';
 import MatchupDistributionChart from '../components/MatchupDistributionChart.jsx';
 import './MatchupPage.css';
 
@@ -304,8 +303,20 @@ function getCategoryMagnitude(catKey, isPct, t1Val, t2Val, leader) {
 }
 
 export default function MatchupPage() {
-  const { myTeam, selectMyTeam, leagueData, loading } = useContext(TeamDataContext);
+  const { myTeam, selectMyTeam, leagueData, loading, refreshTeam } = useContext(TeamDataContext);
   const navigate = useNavigate();
+  const [justRefreshed, setJustRefreshed] = useState(false);
+
+  const handleRefresh = async () => {
+    if (loading || !refreshTeam) return;
+    try {
+      await refreshTeam();
+      setJustRefreshed(true);
+      setTimeout(() => setJustRefreshed(false), 2500);
+    } catch (err) {
+      console.error('Refresh failed:', err);
+    }
+  };
 
   // ── Opponent selection & Auto-detection ───────────────
   const scheduledOppId = useMemo(() => {
@@ -408,7 +419,7 @@ export default function MatchupPage() {
   const [mcLoading, setMcLoading]     = useState(false);
   const [mcError, setMcError]         = useState(null);
 
-  const hasAnalysisData = !analysisLoading && Boolean(analysisResult || mcResult || (leagueData?.league_id === '66811'));
+  const hasAnalysisData = !analysisLoading && Boolean(analysisResult || mcResult);
 
   const abortControllerRef = useRef(null);
 
@@ -531,88 +542,21 @@ export default function MatchupPage() {
     }
   }, [buildRequestBody, getCacheKey, handleTabChange, myTeam?.team_id, oppTeam?.team_id, weekNum, dateStart]);
 
-  // ── Streamer Recommendations state ────────────────────
-  const [streamerRecs, setStreamerRecs] = useState(() => {
-    if (!myTeam || !oppTeamId) return null;
-    const key = `${leagueData?.league_id || ''}-${myTeam.team_id}-${oppTeamId}-${weekNum}-${dateStart}`;
-    return getCachedStreamers(key);
-  });
-  const [streamerLoading, setStreamerLoading] = useState(false);
-  const [streamerError, setStreamerError]     = useState(null);
-  const [copiedPlayer, setCopiedPlayer]       = useState(null);
-
-  const handleCopyPlayer = useCallback((playerName) => {
-    try {
-      navigator.clipboard?.writeText(playerName);
-      setCopiedPlayer(playerName);
-      setTimeout(() => setCopiedPlayer(null), 2000);
-    } catch (e) {
-      console.warn('Clipboard copy failed:', e);
-    }
-  }, []);
-
-  const fetchStreamers = useCallback(async (forceRefresh = false) => {
-    if (!myTeam || !oppTeam || !leagueData) return;
-    const cacheKey = getCacheKey(myTeam.team_id, oppTeam.team_id, weekNum, dateStart);
-
-    if (!forceRefresh && getCachedStreamers(cacheKey)) {
-      setStreamerRecs(getCachedStreamers(cacheKey));
-      setStreamerError(null);
-      setStreamerLoading(false);
-      return;
-    }
-
-    setStreamerLoading(true);
-    setStreamerError(null);
-
-    const allNames = leagueData?.teams ? leagueData.teams.flatMap(t => t.players.map(p => p.name)) : [];
-
-    const body = {
-      league_id:        leagueData.league_id,
-      team1:            myTeam,
-      team2:            oppTeam,
-      week_num:         weekNum,
-      date_start:       dateStart,
-      roster_positions: leagueData.roster_positions ?? null,
-      stats_source:     'weekly_stats',
-      all_rostered_names: allNames,
-      limit:            6
-    };
-
-    try {
-      const response = await fetch('/api/streamer-recommendations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const json = await response.json();
-      if (json.status === 'success' && json.payload) {
-        setStreamerRecs(json.payload);
-        setCachedStreamers(cacheKey, json.payload);
-      } else {
-        throw new Error(json.message || 'Streamer analysis failed');
-      }
-    } catch (err) {
-      console.warn('Backend streamer API failed or offline, falling back to mock:', err);
-      setStreamerRecs(MOCK_STREAMER_RECOMMENDATIONS);
-      setCachedStreamers(cacheKey, MOCK_STREAMER_RECOMMENDATIONS);
-    } finally {
-      setStreamerLoading(false);
-    }
-  }, [myTeam, oppTeam, leagueData, weekNum, dateStart, getCacheKey]);
-
+  // Mark in sessionStorage that Matchup Analyzer has been run for this team
   useEffect(() => {
-    if ((activeAnalysisTab === 'streamers' || hasAnalysisData) && !streamerRecs && !streamerLoading && myTeam && oppTeam) {
-      fetchStreamers();
+    if (hasAnalysisData && myTeam && oppTeam) {
+      try {
+        sessionStorage.setItem('9cat_matchup_has_run', `${leagueData?.league_id || ''}-${myTeam.team_id}`);
+      } catch {}
     }
-  }, [activeAnalysisTab, hasAnalysisData, streamerRecs, streamerLoading, myTeam, oppTeam, fetchStreamers]);
+  }, [hasAnalysisData, leagueData?.league_id, myTeam, oppTeam]);
 
   // ── Derived data from analysis result ──────────────────
   const odds = useMemo(() => {
-    if (!analysisResult) return null;
-    return parseAnalysisResult(analysisResult);
+    if (analysisResult) {
+      return parseAnalysisResult(analysisResult);
+    }
+    return null;
   }, [analysisResult]);
 
   const selectedCatData = useMemo(() => {
@@ -662,19 +606,18 @@ export default function MatchupPage() {
   const accumulatedStats = useMemo(() => {
     if (analysisResult?.accumulated_stats) return analysisResult.accumulated_stats;
     if (mcResult?.accumulated_stats) return mcResult.accumulated_stats;
-    if (leagueData?.league_id === '66811') return MOCK_MATCHUP_ANALYSIS.accumulated_stats;
     return null;
-  }, [analysisResult, mcResult, leagueData]);
+  }, [analysisResult, mcResult]);
 
   const playerGames = useMemo(() => {
     if (analysisResult?.player_games) return analysisResult.player_games;
     if (mcResult?.player_games) return mcResult.player_games;
-    if (leagueData?.league_id === '66811') return MOCK_MATCHUP_ANALYSIS.player_games;
     return null;
-  }, [analysisResult, mcResult, leagueData]);
+  }, [analysisResult, mcResult]);
 
   const inactivePlayers = useMemo(() => {
     const backendInactive = mcResult?.inactive_players || analysisResult?.inactive_players;
+    const irSlots = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
 
     const getRosterInactive = (team, backendList) => {
       if (!team?.players) return [];
@@ -683,19 +626,30 @@ export default function MatchupPage() {
 
       if (backendList && backendList.length > 0) {
         for (const p of backendList) {
-          list.push(p);
+          const rosterMatch = team.players.find(rp => rp.name === p.name);
+          const selPos = String(rosterMatch?.selected_position || '').toUpperCase().trim();
+          const isIr = irSlots.has(selPos);
+          list.push({
+            ...p,
+            status: isIr && p.status && !String(p.status).includes(selPos)
+              ? `${p.status} (${selPos})`
+              : (p.status || (isIr ? selPos : null)),
+            proj_games_played: isIr ? 0 : (p.proj_games_played ?? 0),
+          });
           seen.add(p.name);
         }
       }
 
       for (const p of team.players) {
         if (!seen.has(p.name)) {
-          const isInjured = Boolean(p.status && ['O', 'INJ', 'IL', 'IL+', 'OUT', 'GTD'].includes(String(p.status).toUpperCase()));
+          const selPos = String(p.selected_position || '').toUpperCase().trim();
+          const isIr = irSlots.has(selPos);
+          const isInjured = isIr || Boolean(p.status && ['O', 'INJ', 'IL', 'IL+', 'OUT', 'GTD'].includes(String(p.status).toUpperCase()));
           if (isInjured) {
             list.push({
               name: p.name,
-              status: p.status,
-              proj_games_played: playerGames?.[team.team_id === myTeam?.team_id ? 'team1' : 'team2']?.[p.name]?.total ?? 0,
+              status: isIr && p.status ? `${p.status} (${selPos})` : (p.status || (isIr ? selPos : null)),
+              proj_games_played: isIr ? 0 : (playerGames?.[team.team_id === myTeam?.team_id ? 'team1' : 'team2']?.[p.name]?.total ?? 0),
             });
             seen.add(p.name);
           }
@@ -711,7 +665,14 @@ export default function MatchupPage() {
   }, [myTeam, oppTeam, mcResult, analysisResult, playerGames]);
 
   // ── Render ─────────────────────────────────────────────
-  if (loading) return <div className="page-wrapper center-content"><div className="spinner" style={{ width: 36, height: 36 }} /></div>;
+  if (loading) {
+    return (
+      <div className="page-wrapper center-content">
+        <div className="spinner" style={{ width: 36, height: 36 }} />
+        <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Loading your team…</p>
+      </div>
+    );
+  }
 
   if (!myTeam) {
     return (
@@ -731,10 +692,24 @@ export default function MatchupPage() {
   return (
     <div className="matchup-page page-wrapper fade-up">
       <div className="section">
-        <h1 className="section-title" style={{ textAlign: 'left' }}>⚔️ Matchup Analyzer</h1>
-        <p className="section-subtitle" style={{ textAlign: 'left' }}>
-          Category-by-category win probabilities vs. any opponent
-        </p>
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div>
+            <h1 className="section-title" style={{ textAlign: 'left', margin: 0 }}>⚔️ Matchup Analyzer</h1>
+            <p className="section-subtitle" style={{ textAlign: 'left', margin: '4px 0 0' }}>
+              Category-by-category win probabilities vs. any opponent
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary refresh-btn"
+            onClick={handleRefresh}
+            disabled={loading}
+            title="Reload latest team and league data from Yahoo Fantasy"
+          >
+            <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>🔄</span>
+            <span>{loading ? 'Reloading…' : justRefreshed ? 'Updated!' : 'Reload from Yahoo'}</span>
+          </button>
+        </div>
 
         {/* Matchup team selectors */}
         <div className="matchup-selector card">
@@ -860,12 +835,12 @@ export default function MatchupPage() {
 
                   <button
                     type="button"
-                    className={`btn-ghost ${activeAnalysisTab === 'streamers' ? 'active' : ''}`}
-                    onClick={() => handleTabChange('streamers')}
+                    className="btn-ghost"
+                    onClick={() => navigate('/streamers')}
                     style={{ padding: '8px 16px', fontSize: '0.85rem', border: '1px solid var(--border)' }}
                     title="View automated streamer recommendations for this matchup"
                   >
-                    🎯 View Streamers
+                    🎯 Streamer Suggestions →
                   </button>
                 </>
               )}
@@ -1000,7 +975,7 @@ export default function MatchupPage() {
               <div className="projections-tabs">
                 <button
                   type="button"
-                  className={`projections-tab-btn ${activeAnalysisTab === 'analytical' ? 'active' : ''}`}
+                  className={`projections-tab-btn ${activeAnalysisTab !== 'monte-carlo' ? 'active' : ''}`}
                   onClick={() => handleTabChange('analytical')}
                 >
                   <span className="tab-icon">📊</span>
@@ -1023,92 +998,78 @@ export default function MatchupPage() {
                     </span>
                   ) : null}
                 </button>
-                <button
-                  type="button"
-                  className={`projections-tab-btn ${activeAnalysisTab === 'streamers' ? 'active' : ''}`}
-                  onClick={() => handleTabChange('streamers')}
-                >
-                  <span className="tab-icon">🎯</span>
-                  <span>Streamer Suggestions</span>
-                  {streamerRecs && streamerRecs.recommendations?.length > 0 ? (
-                    <span className="projections-tab-badge success">
-                      {streamerRecs.recommendations.length} Targets
-                    </span>
-                  ) : streamerLoading ? (
-                    <span className="projections-tab-badge loading">
-                      Scanning…
-                    </span>
-                  ) : null}
-                </button>
               </div>
             </div>
 
             {/* TAB CONTENT: Analytical Projections */}
-            {activeAnalysisTab === 'analytical' && (
+            {activeAnalysisTab !== 'monte-carlo' && (
               <div className="tab-pane fade-in">
-                <div style={{ marginBottom: '1rem' }}>
+                <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    Formula-based normal & ratio distributions derived from player projections, schedule volume & optimal lineup solving
+                    Click any category card on the left to inspect its head-to-head probability distribution on the right
                   </span>
                 </div>
 
-                <div className="odds-grid">
-                  {odds.map(({ cat, myMu, oppMu, winProb }) => {
-                    const color = winProb >= 0.6 ? 'var(--accent)'
-                                : winProb >= 0.4 ? 'var(--text-secondary)'
-                                : '#e53935';
-                    return (
-                      <div
-                        className={`odds-card ${activeCatKey === cat.key ? 'active' : ''}`}
-                        key={cat.key}
-                        onClick={() => setActiveCatKey(cat.key)}
-                      >
-                        <div className="odds-cat">{cat.icon} {cat.label}</div>
-                        <div className="odds-pct" style={{ color }}>
-                          {formatPct(winProb)}
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500, textTransform: 'uppercase', marginTop: '2px' }}>Estimated Win Prob</span>
+                <div className="category-analysis-workspace">
+                  <div className="odds-grid">
+                    {odds.map(({ cat, myMu, oppMu, winProb }) => {
+                      const color = winProb >= 0.6 ? 'var(--accent)'
+                                  : winProb >= 0.4 ? '#fbbf24'
+                                  : '#e53935';
+                      return (
+                        <div
+                          className={`odds-card ${activeCatKey === cat.key ? 'active' : ''}`}
+                          key={cat.key}
+                          onClick={() => setActiveCatKey(cat.key)}
+                        >
+                          <div className="odds-cat">{cat.icon} {cat.label}</div>
+                          <div className="odds-pct" style={{ color }}>
+                            {formatPct(winProb)}
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', marginTop: '2px' }}>Win Chance</span>
+                          </div>
+                          <div className="odds-bar">
+                            <div
+                              className="odds-bar-fill"
+                              style={{ width: `${winProb * 100}%`, background: color }}
+                            />
+                          </div>
+                          <div className="odds-vs-row">
+                            <span title="You">You: <strong>{formatMu(myMu, cat.key)}</strong></span>
+                            <span title="Opponent">Opp: <strong>{formatMu(oppMu, cat.key)}</strong></span>
+                          </div>
+                          <div className="odds-proj-margin">
+                            <span style={{ color: 'var(--text-muted)' }}>Margin:</span>
+                            <span style={{ color: myMu === oppMu ? 'var(--text-muted)' : (cat.key === 'TO' ? myMu < oppMu : myMu > oppMu) ? '#4ade80' : '#f87171' }}>
+                              {(() => {
+                                if (cat.derived) {
+                                  const diff = (myMu - oppMu) * 100;
+                                  return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+                                }
+                                if (cat.key === 'TO') {
+                                  const diff = Math.abs(myMu - oppMu);
+                                  if (myMu === oppMu) return '0.0 TO';
+                                  return myMu < oppMu ? `-${diff.toFixed(1)} TO` : `+${diff.toFixed(1)} TO`;
+                                }
+                                const diff = myMu - oppMu;
+                                return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} ${cat.key}`;
+                              })()}
+                            </span>
+                          </div>
                         </div>
-                        <div className="odds-bar">
-                          <div
-                            className="odds-bar-fill"
-                            style={{ width: `${winProb * 100}%`, background: color }}
-                          />
-                        </div>
-                        <div className="odds-vs-row">
-                          <span title="You">You: <strong>{formatMu(myMu, cat.key)}</strong></span>
-                          <span title="Opponent">Opp: <strong>{formatMu(oppMu, cat.key)}</strong></span>
-                        </div>
-                        <div className="odds-proj-margin">
-                          <span style={{ color: 'var(--text-muted)' }}>Proj Margin:</span>
-                          <span style={{ color: myMu === oppMu ? 'var(--text-muted)' : (cat.key === 'TO' ? myMu < oppMu : myMu > oppMu) ? '#4ade80' : '#f87171' }}>
-                            {(() => {
-                              if (cat.derived) {
-                                const diff = (myMu - oppMu) * 100;
-                                return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
-                              }
-                              if (cat.key === 'TO') {
-                                const diff = Math.abs(myMu - oppMu);
-                                if (myMu === oppMu) return '0.0 TO';
-                                return myMu < oppMu ? `-${diff.toFixed(1)} TO` : `+${diff.toFixed(1)} TO`;
-                              }
-                              const diff = myMu - oppMu;
-                              return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} ${cat.key}`;
-                            })()}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
 
-                {selectedCatData && (
-                  <MatchupDistributionChart
-                    category={selectedCatData.cat}
-                    my={{ mu: selectedCatData.myMu, sigma: selectedCatData.mySigma }}
-                    opp={{ mu: selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
-                    winProb={selectedCatData.winProb}
-                  />
-                )}
+                  {selectedCatData && (
+                    <MatchupDistributionChart
+                      category={selectedCatData.cat}
+                      my={{ mu: selectedCatData.myMu, sigma: selectedCatData.mySigma }}
+                      opp={{ mu: selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
+                      winProb={selectedCatData.winProb}
+                      onSelectCategory={setActiveCatKey}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
@@ -1134,63 +1095,66 @@ export default function MatchupPage() {
                       </span>
                     </div>
 
-                    <div className="odds-grid">
-                      {mcCatData && mcCatData.map(({ cat, winProb, myMu, oppMu }) => {
-                        const color = winProb >= 0.6 ? 'var(--accent)'
-                                    : winProb >= 0.4 ? 'var(--text-secondary)'
-                                    : '#e53935';
-                        return (
-                          <div
-                            className={`odds-card ${activeCatKey === cat.key ? 'active' : ''}`}
-                            key={cat.key}
-                            onClick={() => setActiveCatKey(cat.key)}
-                          >
-                            <div className="odds-cat">{cat.icon} {cat.label}</div>
-                            <div className="odds-pct" style={{ color }}>
-                              {formatPct(winProb)}
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', fontWeight: 500, textTransform: 'uppercase', marginTop: '2px' }}>Simulated Win Prob</span>
+                    <div className="category-analysis-workspace">
+                      <div className="odds-grid">
+                        {mcCatData && mcCatData.map(({ cat, winProb, myMu, oppMu }) => {
+                          const color = winProb >= 0.6 ? 'var(--accent)'
+                                      : winProb >= 0.4 ? '#fbbf24'
+                                      : '#e53935';
+                          return (
+                            <div
+                              className={`odds-card ${activeCatKey === cat.key ? 'active' : ''}`}
+                              key={cat.key}
+                              onClick={() => setActiveCatKey(cat.key)}
+                            >
+                              <div className="odds-cat">{cat.icon} {cat.label}</div>
+                              <div className="odds-pct" style={{ color }}>
+                                {formatPct(winProb)}
+                                <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', marginTop: '2px' }}>Sim Win Chance</span>
+                              </div>
+                              <div className="odds-bar">
+                                <div
+                                  className="odds-bar-fill"
+                                  style={{ width: `${winProb * 100}%`, background: color }}
+                                />
+                              </div>
+                              <div className="odds-vs-row">
+                                <span title="You">You: <strong>{formatMu(myMu, cat.key)}</strong></span>
+                                <span title="Opponent">Opp: <strong>{formatMu(oppMu, cat.key)}</strong></span>
+                              </div>
+                              <div className="odds-proj-margin">
+                                <span style={{ color: 'var(--text-muted)' }}>Sim Margin:</span>
+                                <span style={{ color: myMu === oppMu ? 'var(--text-muted)' : (cat.key === 'TO' ? myMu < oppMu : myMu > oppMu) ? '#4ade80' : '#f87171' }}>
+                                  {(() => {
+                                    if (cat.derived) {
+                                      const diff = (myMu - oppMu) * 100;
+                                      return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
+                                    }
+                                    if (cat.key === 'TO') {
+                                      const diff = Math.abs(myMu - oppMu);
+                                      if (myMu === oppMu) return '0.0 TO';
+                                      return myMu < oppMu ? `-${diff.toFixed(1)} TO` : `+${diff.toFixed(1)} TO`;
+                                    }
+                                    const diff = myMu - oppMu;
+                                    return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} ${cat.key}`;
+                                  })()}
+                                </span>
+                              </div>
                             </div>
-                            <div className="odds-bar">
-                              <div
-                                className="odds-bar-fill"
-                                style={{ width: `${winProb * 100}%`, background: color }}
-                              />
-                            </div>
-                            <div className="odds-vs-row">
-                              <span title="You">You: <strong>{formatMu(myMu, cat.key)}</strong></span>
-                              <span title="Opponent">Opp: <strong>{formatMu(oppMu, cat.key)}</strong></span>
-                            </div>
-                            <div className="odds-proj-margin">
-                              <span style={{ color: 'var(--text-muted)' }}>Sim Margin:</span>
-                              <span style={{ color: myMu === oppMu ? 'var(--text-muted)' : (cat.key === 'TO' ? myMu < oppMu : myMu > oppMu) ? '#4ade80' : '#f87171' }}>
-                                {(() => {
-                                  if (cat.derived) {
-                                    const diff = (myMu - oppMu) * 100;
-                                    return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%`;
-                                  }
-                                  if (cat.key === 'TO') {
-                                    const diff = Math.abs(myMu - oppMu);
-                                    if (myMu === oppMu) return '0.0 TO';
-                                    return myMu < oppMu ? `-${diff.toFixed(1)} TO` : `+${diff.toFixed(1)} TO`;
-                                  }
-                                  const diff = myMu - oppMu;
-                                  return `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} ${cat.key}`;
-                                })()}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
 
-                    {selectedCatData && (
-                      <MatchupDistributionChart
-                        category={selectedCatData.cat}
-                        my={{ mu: selectedMcCatData?.myMu ?? selectedCatData.myMu, sigma: selectedCatData.mySigma }}
-                        opp={{ mu: selectedMcCatData?.oppMu ?? selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
-                        winProb={selectedMcCatData?.winProb ?? selectedCatData.winProb}
-                      />
-                    )}
+                      {selectedCatData && (
+                        <MatchupDistributionChart
+                          category={selectedCatData.cat}
+                          my={{ mu: selectedMcCatData?.myMu ?? selectedCatData.myMu, sigma: selectedCatData.mySigma }}
+                          opp={{ mu: selectedMcCatData?.oppMu ?? selectedCatData.oppMu, sigma: selectedCatData.oppSigma }}
+                          winProb={selectedMcCatData?.winProb ?? selectedCatData.winProb}
+                          onSelectCategory={setActiveCatKey}
+                        />
+                      )}
+                    </div>
                   </div>
                 ) : (
                   /* Empty state before user has run Monte Carlo */
@@ -1214,460 +1178,255 @@ export default function MatchupPage() {
                 )}
               </div>
             )}
-
-            {/* TAB CONTENT: Streamer Suggestions */}
-            {activeAnalysisTab === 'streamers' && (
-              <div className="tab-pane fade-in">
-                {streamerLoading ? (
-                  <div className="card streamer-loading-state" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
-                    <div className="spinner large" style={{ width: '40px', height: '40px', borderWidth: '3px', margin: '0 auto 1.25rem' }} />
-                    <h3 style={{ margin: '0 0 0.5rem', fontWeight: 700 }}>Analyzing Free Agents &amp; Schedule Fit…</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', maxWidth: '520px', margin: '0 auto' }}>
-                      Triaging contested categories, calculating daily startable games, and ranking waivers by net win probability gain.
-                    </p>
-                  </div>
-                ) : streamerRecs && streamerRecs.recommendations ? (
-                  <div className="streamer-dashboard">
-                    {/* 1. Category Triage Bar */}
-                    <div className="streamer-diag-card card">
-                      <div className="streamer-diag-header">
-                        <div>
-                          <div className="streamer-diag-title">Category Matchup Diagnostics</div>
-                          <div className="streamer-diag-subtitle">
-                            Target contested swing categories (20%–80%) where additional streaming stats flip the matchup win.
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-ghost streamer-refresh-btn"
-                          onClick={() => fetchStreamers(true)}
-                          disabled={streamerLoading}
-                          title="Refresh free agent stream recommendations"
-                        >
-                          🔄 Refresh Streamers
-                        </button>
-                      </div>
-
-                      <div className="streamer-triage-grid">
-                        <div className="triage-column safe">
-                          <div className="triage-column-header">
-                            <span className="triage-status-dot safe" />
-                            <span>Safe Leads (Protect)</span>
-                          </div>
-                          <div className="triage-tags">
-                            {Object.entries(streamerRecs.matchup_diagnostics?.categories || {})
-                              .filter(([_, d]) => d.status === 'SAFE')
-                              .map(([k, d]) => (
-                                <span key={k} className="triage-tag safe" title={`Win Prob: ${Math.round(d.p_win * 100)}%`}>
-                                  <strong>{k.toUpperCase()}</strong> {Math.round(d.p_win * 100)}%
-                                </span>
-                              ))}
-                          </div>
-                        </div>
-
-                        <div className="triage-column swing">
-                          <div className="triage-column-header">
-                            <span className="triage-status-dot swing" />
-                            <span>Contested Battles (Targets)</span>
-                          </div>
-                          <div className="triage-tags">
-                            {Object.entries(streamerRecs.matchup_diagnostics?.categories || {})
-                              .filter(([_, d]) => d.status === 'SWING')
-                              .map(([k, d]) => (
-                                <span key={k} className="triage-tag swing" title={`Margin: ${d.margin > 0 ? '+' : ''}${d.margin}`}>
-                                  <strong>{k.toUpperCase()}</strong> {Math.round(d.p_win * 100)}% ({d.margin > 0 ? '+' : ''}{d.margin})
-                                </span>
-                              ))}
-                          </div>
-                        </div>
-
-                        <div className="triage-column doomed">
-                          <div className="triage-column-header">
-                            <span className="triage-status-dot doomed" />
-                            <span>Punted Deficits (Ignore)</span>
-                          </div>
-                          <div className="triage-tags">
-                            {Object.entries(streamerRecs.matchup_diagnostics?.categories || {})
-                              .filter(([_, d]) => d.status === 'DOOMED')
-                              .map(([k, d]) => (
-                                <span key={k} className="triage-tag doomed" title={`Win Prob: ${Math.round(d.p_win * 100)}%`}>
-                                  <strong>{k.toUpperCase()}</strong> {Math.round(d.p_win * 100)}%
-                                </span>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Roster Maneuver Action */}
-                      {streamerRecs.roster_action && (
-                        <div className={`streamer-roster-banner ${streamerRecs.roster_action.type === 'MOVE_TO_IR' ? 'ir-stash' : 'drop-swap'}`}>
-                          <span className="srb-icon">
-                            {streamerRecs.roster_action.type === 'MOVE_TO_IR' ? '✨' : streamerRecs.roster_action.type === 'HOLD_WARNING' ? '⚠️' : '💡'}
-                          </span>
-                          <div>
-                            <strong>
-                              {streamerRecs.roster_action.type === 'MOVE_TO_IR'
-                                ? 'Zero-Drop Roster Move: '
-                                : streamerRecs.roster_action.type === 'HOLD_WARNING'
-                                ? 'High-Value Bench (vs. Free Agents): '
-                                : 'Recommended Bench Drop: '}
-                            </strong>
-                            <span>{streamerRecs.roster_action.reason}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 2. Streamer Recommendation Cards */}
-                    <div className="streamer-cards-container">
-                      <div className="streamer-section-label">
-                        <span>Top Free Agent Streamers for Week {weekNum}</span>
-                        <span className="streamer-section-sub">
-                          Ranked by Net Matchup Win Probability Impact (ΔE)
-                        </span>
-                      </div>
-
-                      <div className="streamer-cards-grid">
-                        {streamerRecs.recommendations.map(rec => {
-                          const p = rec.player;
-                          const action = rec.action;
-                          const sched = rec.schedule;
-                          const impact = rec.impact;
-                          const isCopied = copiedPlayer === p.name;
-
-                          return (
-                            <div key={p.name} className="streamer-card card">
-                              {/* Card Header */}
-                              <div className="sc-header">
-                                <div className="sc-rank-badge">#{rec.rank}</div>
-                                <div className="sc-player-info">
-                                  <div className="sc-name-row">
-                                    <span className="sc-name">{p.name}</span>
-                                    <span className="sc-team-pos">{p.nba_team} · {p.positions}</span>
-                                  </div>
-                                  <div className="sc-stats-preview">
-                                    <span>{p.mu_pts} PTS</span> · <span>{p.mu_reb} REB</span> · <span>{p.mu_ast} AST</span> · <span className="sc-z">Z: {p.z_total > 0 ? '+' : ''}{p.z_total?.toFixed(2) ?? '0.00'}</span>
-                                  </div>
-                                </div>
-
-                                <div className="sc-delta-badge">
-                                  <span className="sc-delta-val">+{impact.expected_win_delta.toFixed(2)}</span>
-                                  <span className="sc-delta-lbl">Cat Win Delta</span>
-                                </div>
-                              </div>
-
-                              {/* Action Callout */}
-                              <div className="sc-action-row">
-                                <span className={`badge ${action?.type === 'MOVE_TO_IR' ? 'badge-green' : action?.type === 'HOLD_WARNING' ? 'badge-red' : 'badge-orange'}`}>
-                                  {action?.type === 'MOVE_TO_IR' ? 'Move to IR' : action?.type === 'HOLD_WARNING' ? 'Hold / Caution' : 'Drop Candidate'}
-                                </span>
-                                <span className="sc-action-text">{action?.reason}</span>
-                              </div>
-
-                              {/* Target Categories Boosted */}
-                              <div className="sc-boosts-section">
-                                <div className="sc-boosts-label">Contested Categories Boosted:</div>
-                                <div className="sc-boosts-grid">
-                                  {impact.primary_boost_categories && impact.primary_boost_categories.length > 0 ? (
-                                    impact.primary_boost_categories.map((b, idx) => (
-                                      <div key={idx} className="sc-boost-item">
-                                        <div className="sc-boost-cat">{b.cat}</div>
-                                        <div className="sc-boost-prob">
-                                          <span>{Math.round(b.before_p * 100)}%</span>
-                                          <span className="sc-arrow">→</span>
-                                          <span className="sc-after">{Math.round(b.after_p * 100)}%</span>
-                                        </div>
-                                        <div className="sc-boost-gain">{b.gain}</div>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                      Provides balanced all-around depth across active categories.
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Risk Flags */}
-                              {impact.risk_flags && impact.risk_flags.length > 0 && (
-                                <div className="sc-risks-row">
-                                  {impact.risk_flags.map((rf, rIdx) => (
-                                    <span key={rIdx} className="sc-risk-chip">
-                                      ⚠️ {rf}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Schedule Grid */}
-                              <div className="sc-schedule-row">
-                                <div className="sc-sched-meta">
-                                  <strong>{sched.startable_games} Startable Game{sched.startable_games !== 1 ? 's' : ''}</strong>
-                                  {sched.clashes > 0 && (
-                                    <span className="sc-clash-note">({sched.clashes} bench clash)</span>
-                                  )}
-                                </div>
-                                <div className="sc-dates-pills">
-                                  {sched.startable_dates && sched.startable_dates.map(dateStr => {
-                                    const dObj = new Date(dateStr + 'T12:00:00');
-                                    const dayName = dObj.toLocaleDateString('en-US', { weekday: 'short' });
-                                    const dayNum = dObj.getDate();
-                                    return (
-                                      <span key={dateStr} className="sc-date-pill active" title={`${dateStr}: Starts in active slot`}>
-                                        <span className="sc-dot" /> {dayName} {dayNum}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* Card Footer */}
-                              <div className="sc-footer">
-                                <button
-                                  type="button"
-                                  className={`btn-ghost sc-copy-btn ${isCopied ? 'copied' : ''}`}
-                                  onClick={() => handleCopyPlayer(p.name)}
-                                >
-                                  {isCopied ? '✓ Copied to Clipboard!' : '📋 Copy Name for Yahoo'}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="card streamer-empty-state" style={{ textAlign: 'center', padding: '3rem 1.5rem' }}>
-                    <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🎯</div>
-                    <h3 style={{ margin: '0 0 0.5rem', fontWeight: 700 }}>Find Optimal Matchup Streamers</h3>
-                    <p style={{ color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 1.5rem', fontSize: '0.88rem' }}>
-                      Analyze free agents based on your contested categories, open roster spots, and remaining NBA schedule.
-                    </p>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={() => fetchStreamers(true)}
-                      disabled={streamerLoading}
-                    >
-                      Scan Free Agents Now
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
         {/* 3. Live Matchup Scoreboard & Accumulated Stats */}
-        {oppTeam && hasAnalysisData && accumulatedStats && (
-          <div className="card live-scoreboard-card fade-up">
-            <div className="live-scoreboard-header">
-              <div>
-                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.15rem' }}>
-                  🏆 Live Matchup Scoreboard
-                  {accumulatedStats.has_live_stats && (
-                    <span className="badge badge-green" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                      ● Live Stats
-                    </span>
-                  )}
-                </h3>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
-                  Stats accumulated so far in Week {weekNum}
-                </span>
+        {oppTeam && hasAnalysisData && accumulatedStats && (() => {
+          const LIVE_CATS = [
+            { key: 'pts', short: 'PTS', label: 'Points' },
+            { key: 'reb', short: 'REB', label: 'Rebounds' },
+            { key: 'ast', short: 'AST', label: 'Assists' },
+            { key: 'stl', short: 'STL', label: 'Steals' },
+            { key: 'blk', short: 'BLK', label: 'Blocks' },
+            { key: 'fg3m', short: '3PM', label: '3-Pointers' },
+            { key: 'fg%', short: 'FG%', label: 'Field Goal %', isPct: true },
+            { key: 'ft%', short: 'FT%', label: 'Free Throw %', isPct: true },
+            { key: 'tov', short: 'TO',  label: 'Turnovers' },
+          ];
+          const s = accumulatedStats.live_score;
+          const tiesCount = s?.ties ?? 0;
+          const tieSuffix = tiesCount > 0 ? `–${tiesCount}` : '';
+          const hasStats = accumulatedStats.has_live_stats;
+
+          const scoreClass = !s || (!hasStats && s.team1_wins === 0 && s.team2_wins === 0)
+            ? 'tied'
+            : s.team1_wins > s.team2_wins
+            ? 'winning'
+            : s.team1_wins < s.team2_wins
+            ? 'trailing'
+            : 'tied';
+          const scoreLabel = !s || (!hasStats && s.team1_wins === 0 && s.team2_wins === 0)
+            ? '0 – 0 Tied'
+            : s.team1_wins > s.team2_wins
+            ? `Leading ${s.team1_wins}–${s.team2_wins}${tieSuffix}`
+            : s.team1_wins < s.team2_wins
+            ? `Trailing ${s.team1_wins}–${s.team2_wins}${tieSuffix}`
+            : `Tied ${s.team1_wins}–${s.team2_wins}${tieSuffix}`;
+          const tooltip = s
+            ? `${s.team1_wins} Wins · ${s.team2_wins} Losses · ${tiesCount} Ties`
+            : 'No matchup score yet';
+
+          const formatCell = (cat, side) => {
+            const cData = accumulatedStats.categories?.[cat.key];
+            if (!cat.isPct) {
+              return { main: accumulatedStats[side]?.[cat.key] ?? '0', sub: null };
+            }
+            const pctVal = side === 'team1' ? cData?.team1 : cData?.team2;
+            const splitStr = side === 'team1' ? cData?.team1_split : cData?.team2_split;
+            const fallbackPct = ((accumulatedStats[side]?.[cat.key.replace('%', '') + 'm'] ?? 0) /
+              ((accumulatedStats[side]?.[cat.key.replace('%', '') + 'a'] || 1))) * 100;
+            const pctStr = pctVal != null ? `${(pctVal * 100).toFixed(1)}%` : `${fallbackPct.toFixed(1)}%`;
+            return { main: pctStr, sub: splitStr || null };
+          };
+
+          return (
+            <div className="card live-scoreboard-card fade-up">
+              <div className="live-scoreboard-header">
+                <div className="live-scoreboard-title-group">
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.02rem' }}>
+                    🏆 Live Matchup Scoreboard
+                    {accumulatedStats.has_live_stats && (
+                      <span className="badge badge-green" style={{ fontSize: '0.68rem', padding: '1px 7px' }}>
+                        ● Live
+                      </span>
+                    )}
+                  </h3>
+                  <span className="live-scoreboard-sub">
+                    Week {weekNum} accumulated totals
+                  </span>
+                </div>
+
+                <div className="live-score-display">
+                  <div className={`live-score-pill ${scoreClass}`} title={tooltip}>
+                    {scoreLabel}
+                  </div>
+                </div>
               </div>
 
-              <div className="live-score-display">
-                {(() => {
-                  const s = accumulatedStats.live_score;
-                  const tiesCount = s?.ties ?? 0;
-                  const tieSuffix = tiesCount > 0 ? `–${tiesCount}` : '';
-                  const hasStats = accumulatedStats.has_live_stats;
+              <div className="live-stats-table-wrapper">
+                <table className="live-stats-table condensed">
+                  <thead>
+                    <tr>
+                      <th className="team-col">Team</th>
+                      {LIVE_CATS.map(cat => (
+                        <th key={cat.key} title={cat.label}>{cat.short}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Row 1: Your Team */}
+                    <tr>
+                      <td className="team-col">
+                        <span className="team-dot you" />
+                        <span className="team-name-cell">{myTeam.name}</span>
+                        <span className="team-tag-you">You</span>
+                      </td>
+                      {LIVE_CATS.map(cat => {
+                        const cData = accumulatedStats.categories?.[cat.key];
+                        const isWinning = cData?.leader === 'team1';
+                        const isTrailing = cData?.leader === 'team2';
+                        const { main, sub } = formatCell(cat, 'team1');
+                        return (
+                          <td key={cat.key} className={isWinning ? 'live-stat-win' : isTrailing ? 'live-stat-loss' : ''}>
+                            <div>{main}</div>
+                            {sub && <div className="live-stat-split">{sub}</div>}
+                          </td>
+                        );
+                      })}
+                    </tr>
 
-                  const scoreClass = !s || (!hasStats && s.team1_wins === 0 && s.team2_wins === 0)
-                    ? 'tied'
-                    : s.team1_wins > s.team2_wins
-                    ? 'winning'
-                    : s.team1_wins < s.team2_wins
-                    ? 'trailing'
-                    : 'tied';
-                  const scoreLabel = !s || (!hasStats && s.team1_wins === 0 && s.team2_wins === 0)
-                    ? '0 – 0 Tied'
-                    : s.team1_wins > s.team2_wins
-                    ? `Leading ${s.team1_wins}–${s.team2_wins}${tieSuffix}`
-                    : s.team1_wins < s.team2_wins
-                    ? `Trailing ${s.team1_wins}–${s.team2_wins}${tieSuffix}`
-                    : `Tied ${s.team1_wins}–${s.team2_wins}${tieSuffix}`;
-                  const tooltip = s
-                    ? `${s.team1_wins} Wins · ${s.team2_wins} Losses · ${tiesCount} Ties`
-                    : 'No matchup score yet';
+                    {/* Row 2: Opponent */}
+                    <tr>
+                      <td className="team-col">
+                        <span className="team-dot opp" />
+                        <span className="team-name-cell">{oppTeam.name}</span>
+                      </td>
+                      {LIVE_CATS.map(cat => {
+                        const cData = accumulatedStats.categories?.[cat.key];
+                        const isWinning = cData?.leader === 'team1';
+                        const isTrailing = cData?.leader === 'team2';
+                        const { main, sub } = formatCell(cat, 'team2');
+                        return (
+                          <td key={cat.key} className={isTrailing ? 'live-stat-win' : isWinning ? 'live-stat-loss' : ''}>
+                            <div>{main}</div>
+                            {sub && <div className="live-stat-split">{sub}</div>}
+                          </td>
+                        );
+                      })}
+                    </tr>
 
-                  return (
-                    <div className={`live-score-pill ${scoreClass}`} title={tooltip}>
-                      {scoreLabel}
-                    </div>
-                  );
-                })()}
+                    {/* Row 3: Margin / Status */}
+                    <tr className="margin-row">
+                      <td className="team-col margin-label-col">Margin</td>
+                      {LIVE_CATS.map(cat => {
+                        const cData = accumulatedStats.categories?.[cat.key];
+                        const magnitude = getCategoryMagnitude(cat.key, cat.isPct, cData?.team1, cData?.team2, cData?.leader);
+                        return (
+                          <td key={cat.key}>
+                            <span className={`live-margin-pill ${magnitude.pillClass}`} title={magnitude.subText}>
+                              {magnitude.text.replace(` ${cat.short}`, '').replace(' FG%', '%').replace(' FT%', '%')}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
+          );
+        })()}
 
-            <div className="live-stats-table-wrapper">
-              <table className="live-stats-table">
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left' }}>Category</th>
-                    <th>{myTeam.name} (You)</th>
-                    <th>{oppTeam.name}</th>
-                    <th>Lead / Margin Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { key: 'pts', label: 'Points (PTS)' },
-                    { key: 'reb', label: 'Rebounds (REB)' },
-                    { key: 'ast', label: 'Assists (AST)' },
-                    { key: 'stl', label: 'Steals (STL)' },
-                    { key: 'blk', label: 'Blocks (BLK)' },
-                    { key: 'fg3m', label: '3-Pointers (3PM)' },
-                    { key: 'fg%', label: 'Field Goal % (FG%)', isPct: true },
-                    { key: 'ft%', label: 'Free Throw % (FT%)', isPct: true },
-                    { key: 'tov', label: 'Turnovers (TO)' },
-                  ].map(cat => {
-                    const cData = accumulatedStats.categories?.[cat.key];
-                    const t1Val = cat.isPct
-                      ? (cData?.team1_split ? `${(cData.team1 * 100).toFixed(1)}% (${cData.team1_split})` : `${((accumulatedStats.team1?.[cat.key.replace('%', '') + 'm'] ?? 0) / ((accumulatedStats.team1?.[cat.key.replace('%', '') + 'a'] || 1)) * 100).toFixed(1)}%`)
-                      : (accumulatedStats.team1?.[cat.key] ?? '0');
-                    const t2Val = cat.isPct
-                      ? (cData?.team2_split ? `${(cData.team2 * 100).toFixed(1)}% (${cData.team2_split})` : `${((accumulatedStats.team2?.[cat.key.replace('%', '') + 'm'] ?? 0) / ((accumulatedStats.team2?.[cat.key.replace('%', '') + 'a'] || 1)) * 100).toFixed(1)}%`)
-                      : (accumulatedStats.team2?.[cat.key] ?? '0');
+        {/* 4. Weekly Games Schedule & Games Played Breakdown (Condensed, Excludes IR Slots) */}
+        {oppTeam && hasAnalysisData && playerGames && (() => {
+          const irSlots = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
+          const isPlayerInIR = (p, teamKey) =>
+            irSlots.has(String(p?.selected_position || '').toUpperCase().trim()) ||
+            Boolean(playerGames?.[teamKey]?.[p?.name]?.is_ir);
 
-                    const isWinning = cData?.leader === 'team1';
-                    const isTrailing = cData?.leader === 'team2';
-                    const magnitude = getCategoryMagnitude(cat.key, cat.isPct, cData?.team1, cData?.team2, cData?.leader);
+          const t1ActivePlayers = myTeam.players.filter(p => !isPlayerInIR(p, 'team1'));
+          const t2ActivePlayers = oppTeam.players.filter(p => !isPlayerInIR(p, 'team2'));
 
-                    return (
-                      <tr key={cat.key}>
-                        <td style={{ textAlign: 'left', fontWeight: 600 }}>{cat.label}</td>
-                        <td className={isWinning ? 'live-stat-win' : isTrailing ? 'live-stat-loss' : ''}>
-                          {t1Val}
-                        </td>
-                        <td className={isTrailing ? 'live-stat-win' : isWinning ? 'live-stat-loss' : ''}>
-                          {t2Val}
-                        </td>
-                        <td>
-                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                            <span className={`live-margin-pill ${magnitude.pillClass}`}>
-                              {magnitude.text}
-                            </span>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                              {magnitude.subText}
-                            </span>
+          const t1Played = t1ActivePlayers.reduce((sum, p) => sum + (playerGames?.team1?.[p.name]?.played ?? 0), 0);
+          const t1Total  = t1ActivePlayers.reduce((sum, p) => sum + (playerGames?.team1?.[p.name]?.total ?? 0), 0);
+          const t1Rem    = Math.max(0, t1Total - t1Played);
+
+          const t2Played = t2ActivePlayers.reduce((sum, p) => sum + (playerGames?.team2?.[p.name]?.played ?? 0), 0);
+          const t2Total  = t2ActivePlayers.reduce((sum, p) => sum + (playerGames?.team2?.[p.name]?.total ?? 0), 0);
+          const t2Rem    = Math.max(0, t2Total - t2Played);
+
+          return (
+            <div className="roster-games-section card fade-up">
+              <div className="roster-games-top-bar">
+                <div className="roster-games-title-wrap">
+                  <h3 className="roster-games-title">📅 Weekly Roster Schedule &amp; Games Played</h3>
+                  <span className="roster-games-sub">Active roster games this week (IR slots excluded)</span>
+                </div>
+                <div className="roster-games-summary-pills">
+                  <span className="rg-summary-pill you">
+                    <strong>{myTeam.name}:</strong> {t1Played}/{t1Total} GP <em>({t1Rem} left)</em>
+                  </span>
+                  <span className="rg-summary-pill opp">
+                    <strong>{oppTeam.name}:</strong> {t2Played}/{t2Total} GP <em>({t2Rem} left)</em>
+                  </span>
+                </div>
+              </div>
+
+              <div className="roster-games-grid">
+                {/* Your Roster */}
+                <div className="roster-games-card">
+                  <div className="roster-games-card-header">
+                    <span className="rg-team-name you">{myTeam.name}</span>
+                    <span className="rg-team-totals">{t1Played}/{t1Total} GP &middot; {t1Rem} left</span>
+                  </div>
+
+                  <div className="roster-games-list">
+                    {t1ActivePlayers.map(p => {
+                      const gInfo = playerGames?.team1?.[p.name] || { played: 0, total: 0, remaining: 0, ratio: '0/0' };
+                      const hasRemaining = gInfo.remaining > 0;
+                      return (
+                        <div className="player-game-item" key={p.name}>
+                          <div className="player-meta-inline">
+                            <span className="player-name-text" title={p.name}>{p.name}</span>
+                            <span className="player-sub-text">{p.nba_team} &middot; {p.positions}</span>
+                            {p.status && <span className="badge badge-orange rg-status-tag">{p.status}</span>}
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* 4. Weekly Games Schedule & Games Played Breakdown */}
-        {oppTeam && hasAnalysisData && playerGames && (
-          <div className="roster-games-section card fade-up">
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.15rem' }}>
-                📅 Weekly Roster Schedule & Games Played
-              </h3>
-              <p className="proj-subtitle" style={{ margin: '0.25rem 0 0' }}>
-                Track each player's games completed vs. total scheduled for this week (e.g. 2/3 games played)
-              </p>
-            </div>
-
-            <div className="roster-games-grid">
-              {/* Your Roster */}
-              <div className="roster-games-card">
-                <div className="roster-games-card-header">
-                  <div>
-                    <h4 style={{ margin: 0, color: 'var(--accent)', fontSize: '0.95rem' }}>{myTeam.name}</h4>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Total Games:{' '}
-                      <strong>
-                        {myTeam.players.reduce((sum, p) => sum + (playerGames?.team1?.[p.name]?.played ?? 0), 0)}
-                        /
-                        {myTeam.players.reduce((sum, p) => sum + (playerGames?.team1?.[p.name]?.total ?? 0), 0)}
-                      </strong>{' '}
-                      played
-                    </span>
-                  </div>
-                  <span className="badge badge-green">You</span>
-                </div>
-
-                <div className="roster-games-list">
-                  {myTeam.players.map(p => {
-                    const gInfo = playerGames?.team1?.[p.name] || { played: 0, total: 0, remaining: 0, ratio: '0/0' };
-                    const hasRemaining = gInfo.remaining > 0;
-                    return (
-                      <div className="player-game-item" key={p.name}>
-                        <div className="player-meta-inline">
-                          <span className="player-name-text">{p.name}</span>
-                          <span className="player-sub-text">{p.positions} &middot; {p.nba_team}</span>
-                          {p.status && <span className="badge badge-orange" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>{p.status}</span>}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}>
-                            🏀 {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} games played
+                          <span
+                            className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}
+                            title={`${gInfo.played} played, ${gInfo.remaining} remaining (${gInfo.total} total this week)`}
+                          >
+                            {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} GP
                           </span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Opponent Roster */}
-              <div className="roster-games-card">
-                <div className="roster-games-card-header">
-                  <div>
-                    <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{oppTeam.name}</h4>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Total Games:{' '}
-                      <strong>
-                        {oppTeam.players.reduce((sum, p) => sum + (playerGames?.team2?.[p.name]?.played ?? 0), 0)}
-                        /
-                        {oppTeam.players.reduce((sum, p) => sum + (playerGames?.team2?.[p.name]?.total ?? 0), 0)}
-                      </strong>{' '}
-                      played
-                    </span>
+                      );
+                    })}
                   </div>
-                  <span className="badge badge-orange">Opponent</span>
                 </div>
 
-                <div className="roster-games-list">
-                  {oppTeam.players.map(p => {
-                    const gInfo = playerGames?.team2?.[p.name] || { played: 0, total: 0, remaining: 0, ratio: '0/0' };
-                    const hasRemaining = gInfo.remaining > 0;
-                    return (
-                      <div className="player-game-item" key={p.name}>
-                        <div className="player-meta-inline">
-                          <span className="player-name-text">{p.name}</span>
-                          <span className="player-sub-text">{p.positions} &middot; {p.nba_team}</span>
-                          {p.status && <span className="badge badge-orange" style={{ fontSize: '0.65rem', padding: '1px 5px' }}>{p.status}</span>}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}>
-                            🏀 {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} games played
+                {/* Opponent Roster */}
+                <div className="roster-games-card">
+                  <div className="roster-games-card-header">
+                    <span className="rg-team-name opp">{oppTeam.name}</span>
+                    <span className="rg-team-totals">{t2Played}/{t2Total} GP &middot; {t2Rem} left</span>
+                  </div>
+
+                  <div className="roster-games-list">
+                    {t2ActivePlayers.map(p => {
+                      const gInfo = playerGames?.team2?.[p.name] || { played: 0, total: 0, remaining: 0, ratio: '0/0' };
+                      const hasRemaining = gInfo.remaining > 0;
+                      return (
+                        <div className="player-game-item" key={p.name}>
+                          <div className="player-meta-inline">
+                            <span className="player-name-text" title={p.name}>{p.name}</span>
+                            <span className="player-sub-text">{p.nba_team} &middot; {p.positions}</span>
+                            {p.status && <span className="badge badge-orange rg-status-tag">{p.status}</span>}
+                          </div>
+                          <span
+                            className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}
+                            title={`${gInfo.played} played, ${gInfo.remaining} remaining (${gInfo.total} total this week)`}
+                          >
+                            {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} GP
                           </span>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* 5. Inactive & Injured Players */}
         {oppTeam && hasAnalysisData && inactivePlayers && (

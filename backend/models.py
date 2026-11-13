@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 from backend.utils import *
 
 def _extract_team_id_from_team_obj(t):
@@ -48,6 +49,13 @@ class FantasyLeague():
         self.roster_positions = league_info.settings.roster_positions
         self.stat_categories = league_info.settings.stat_categories
 
+        # Cache league_key on yahoo_query so subsequent team queries don't trigger
+        # redundant calls to get_current_game_metadata()
+        league_key = getattr(league_info, 'league_key', None)
+        if league_key:
+            yahoo_query.league_key = league_key
+            yahoo_query._cached_league_key = league_key
+
         # Fetch current week matchups to automatically map opponents
         self.weekly_matchups = {}
         # Method 1: get_league_matchups_by_week
@@ -65,10 +73,26 @@ class FantasyLeague():
             print(f"Warning: Could not fetch weekly matchups for week {self.current_week}: {e}")
 
         self.teams = []
-        self.num_teams = yahoo_query.get_league_info().num_teams
-        for team_id in range(1, self.num_teams + 1):
-            team_info = yahoo_query.get_team_info(team_id)
+        # Reuse already fetched num_teams instead of re-fetching the entire league from Yahoo
+        try:
+            self.num_teams = int(league_info.num_teams)
+        except (ValueError, TypeError):
+            self.num_teams = 12
 
+        # Fetch teams concurrently in parallel (e.g., 5 workers) instead of 10-14 sequential requests
+        def _fetch_single_team(t_id):
+            try:
+                return t_id, yahoo_query.get_team_info(t_id)
+            except Exception:
+                time.sleep(0.4)
+                return t_id, yahoo_query.get_team_info(t_id)
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            fetched_results = list(executor.map(_fetch_single_team, range(1, self.num_teams + 1)))
+
+        fetched_results.sort(key=lambda x: x[0])
+
+        for team_id, team_info in fetched_results:
             # Method 2: Check team_info.matchups if not yet mapped
             if str(team_id) not in self.weekly_matchups and hasattr(team_info, 'matchups') and team_info.matchups:
                 for m in team_info.matchups:
@@ -98,7 +122,6 @@ class FantasyLeague():
 
             current_opp_id = self.weekly_matchups.get(str(team_id))
             self.teams.append(Team(team_info, player_stats, current_opponent_id=current_opp_id))
-            time.sleep(0.05)
 
         # Backfill current_opponent_id on any team that had its matchup discovered later
         for team in self.teams:

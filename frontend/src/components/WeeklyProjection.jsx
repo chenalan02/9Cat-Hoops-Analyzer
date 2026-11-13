@@ -14,22 +14,22 @@ import './WeeklyProjection.css';
  *   leagueTeams: Team[]     — all league teams (for league rank coloring)
  *   projGames:   number     — default 3.5
  */
-export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5 }) {
+export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5, statsSource = 'ema' }) {
   const [ciMode, setCiMode] = useState('95'); // '95' | '68'
   const [pgInput, setPgInput] = useState(String(projGames));
   const [pg, setPg] = useState(projGames);
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'bars'
 
   const proj = useMemo(
-    () => computeTeamWeeklyProjection(players ?? [], pg),
-    [players, pg]
+    () => computeTeamWeeklyProjection(players ?? [], pg, statsSource),
+    [players, pg, statsSource]
   );
 
   // Project every league team and rank by projected category μ
   const leagueProjs = useMemo(() => {
     if (!leagueTeams) return [];
-    return leagueTeams.map(t => computeTeamWeeklyProjection(t.players ?? [], pg));
-  }, [leagueTeams, pg]);
+    return leagueTeams.map(t => computeTeamWeeklyProjection(t.players ?? [], pg, statsSource));
+  }, [leagueTeams, pg, statsSource]);
 
   function getLeagueRank(catKey) {
     const myVal = proj[catKey]?.mu ?? 0;

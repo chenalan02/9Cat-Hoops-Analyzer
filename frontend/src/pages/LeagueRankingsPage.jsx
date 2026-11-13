@@ -1,34 +1,58 @@
 import { useState, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
-import { CATEGORIES, getPlayerMu, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
+import { CATEGORIES, getPlayerMu, computeLeagueZScores, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
 import { formatMu } from '../utils/formatters.js';
 import LeagueWeeklyProjectionsChart from '../components/LeagueWeeklyProjectionsChart.jsx';
 import './LeagueRankingsPage.css';
 
 export default function LeagueRankingsPage() {
-  const { leagueData, myTeam, loading } = useContext(TeamDataContext);
+  const { leagueData, myTeam, loading, refreshTeam } = useContext(TeamDataContext);
   const navigate = useNavigate();
   const [sortKey, setSortKey]   = useState('overall');
   const [sortDir, setSortDir]   = useState('asc');
+  const [justRefreshed, setJustRefreshed] = useState(false);
+
+  const handleRefresh = async () => {
+    if (loading || !refreshTeam) return;
+    try {
+      await refreshTeam();
+      setJustRefreshed(true);
+      setTimeout(() => setJustRefreshed(false), 2500);
+    } catch (err) {
+      console.error('Refresh failed:', err);
+    }
+  };
 
 
-  // Compute team-level category μ for all teams
-  const teamStats = useMemo(() => {
+  // Compute league teams with Rest of Season (ROS) projections and Z-scores
+  const rosLeagueTeams = useMemo(() => {
     if (!leagueData?.teams) return [];
-    return leagueData.teams.map(team => {
+    // Clone teams and players to compute ROS-based Z-scores without mutating other tabs
+    const cloned = leagueData.teams.map(t => ({
+      ...t,
+      players: (t.players || []).map(p => ({ ...p }))
+    }));
+    return computeLeagueZScores(cloned, CATEGORIES.map(c => c.key), 'ros');
+  }, [leagueData]);
+
+  // Compute team-level category μ for all teams under Rest of Season (ROS)
+  const teamStats = useMemo(() => {
+    if (!rosLeagueTeams.length) return [];
+    return rosLeagueTeams.map(team => {
+      const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
       const activePlayers = team.players.filter(
-        p => p.selected_position !== 'IL' && p.selected_position !== 'NA'
+        p => !irSet.has(String(p.selected_position || '').toUpperCase().trim())
       );
       const catMus = {};
       CATEGORIES.forEach(cat => {
-        const vals = activePlayers.map(p => getPlayerMu(p, cat)).filter(v => v !== null && !isNaN(v));
+        const vals = activePlayers.map(p => getPlayerMu(p, cat, 'ros')).filter(v => v !== null && !isNaN(v));
         catMus[cat.key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
       });
       const zSum = activePlayers.reduce((s, p) => s + (p.zSum ?? 0), 0);
       return { team, catMus, zSum };
     });
-  }, [leagueData]);
+  }, [rosLeagueTeams]);
 
   // Rank each team per category
   const withRanks = useMemo(() => {
@@ -77,6 +101,7 @@ export default function LeagueRankingsPage() {
     return (
       <div className="page-wrapper center-content">
         <div className="spinner" style={{ width: 36, height: 36 }} />
+        <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Loading your team…</p>
       </div>
     );
   }
@@ -88,7 +113,7 @@ export default function LeagueRankingsPage() {
           <div style={{ fontSize: '4rem' }}>🏆</div>
           <h2 style={{ marginBottom: '0.5rem' }}>No League Data</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Analyze your team first to unlock league rankings.
+            Analyze your team first to unlock league power rankings.
           </p>
           <button className="btn-primary" onClick={() => navigate('/')}>Analyze My Team</button>
         </div>
@@ -99,19 +124,29 @@ export default function LeagueRankingsPage() {
   return (
     <div className="league-page page-wrapper fade-up">
       <div className="section">
-        <div className="page-header">
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
-            <h1 className="section-title" style={{ textAlign: 'left' }}>🏆 League Rankings</h1>
+            <h1 className="section-title" style={{ textAlign: 'left' }}>🏆 League Power Rankings</h1>
             <p className="section-subtitle" style={{ textAlign: 'left' }}>
-              {leagueData.name} — {leagueData.season} Season
+              {leagueData.name} — {leagueData.season} Season &middot; Rest of Season (ROS)
             </p>
           </div>
+          <button
+            type="button"
+            className="btn-secondary refresh-btn"
+            onClick={handleRefresh}
+            disabled={loading}
+            title="Reload latest team and league data from Yahoo Fantasy"
+          >
+            <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>🔄</span>
+            <span>{loading ? 'Reloading…' : justRefreshed ? 'Updated!' : 'Reload from Yahoo'}</span>
+          </button>
         </div>
 
 
 
         <p className="table-hint">
-          Rankings based on team-average category μ. Click column headers to sort.
+          Rankings based on team-average category &mu; using Rest of Season (ROS) projections. Click column headers to sort.
           Color = your rank in that category.
         </p>
 
@@ -186,8 +221,9 @@ export default function LeagueRankingsPage() {
 
         {/* Weekly Projections Chart across all teams */}
         <LeagueWeeklyProjectionsChart 
-          leagueTeams={leagueData.teams || []} 
-          myTeam={myTeam} 
+          leagueTeams={rosLeagueTeams} 
+          myTeam={myTeam}
+          statsSource="ros"
         />
       </div>
     </div>

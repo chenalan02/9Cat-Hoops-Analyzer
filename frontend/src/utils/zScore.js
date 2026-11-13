@@ -15,10 +15,29 @@ export const CATEGORIES = [
   { key: 'TO',   label: 'Turnovers',        muKey: 'mu_tov',  varKey: 'var_tov',  icon: '', lowerBetter: true },
 ];
 
+// Resolve the active stats dictionary for a player based on statsSource ('ema' | 'weekly' | 'ros' | 'preseason').
+// Falls back cleanly if the selected projection table is empty or missing for that player.
+export function getPlayerStatsObject(player, statsSource = 'ema') {
+  if (!player) return null;
+  const hasStats = (s) => s && Object.keys(s).length > 0 && (s.mu_pts !== undefined || s.z_total !== undefined);
+  if (statsSource === 'preseason') {
+    if (hasStats(player.preseason_stats)) return player.preseason_stats;
+    if (hasStats(player.ros_stats)) return player.ros_stats;
+  } else if (statsSource === 'weekly') {
+    if (hasStats(player.weekly_stats)) return player.weekly_stats;
+  } else if (statsSource === 'ros') {
+    if (hasStats(player.ros_stats)) return player.ros_stats;
+  }
+  if (hasStats(player.ema_stats)) return player.ema_stats;
+  if (hasStats(player.ros_stats)) return player.ros_stats;
+  if (hasStats(player.preseason_stats)) return player.preseason_stats;
+  return player.ema_stats || null;
+}
+
 // Get the μ value for a player in a given category.
 // FG% and FT% are derived from their component mus.
-export function getPlayerMu(player, cat) {
-  const s = player.ema_stats;
+export function getPlayerMu(player, cat, statsSource = 'ema') {
+  const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
   if (cat.derived === 'fg') {
     return s.mu_fga > 0 ? s.mu_fgm / s.mu_fga : null;
@@ -32,8 +51,8 @@ export function getPlayerMu(player, cat) {
 // Get the variance for a player in a given category.
 // For derived stats (FG%, FT%) we approximate variance using
 // the delta method: Var(X/Y) ≈ (μx²/μy⁴)·Var(y) + (1/μy²)·Var(x)
-export function getPlayerVar(player, cat) {
-  const s = player.ema_stats;
+export function getPlayerVar(player, cat, statsSource = 'ema') {
+  const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
   if (cat.derived === 'fg') {
     if (!s.mu_fga || s.mu_fga === 0) return null;
@@ -50,11 +69,11 @@ export function getPlayerVar(player, cat) {
 
 // Compute per-player μ values for all categories across the entire league roster.
 // Returns a map: { catKey → [ mu values of all players who have data ] }
-function buildLeagueMuMap(allPlayers) {
+export function buildLeagueMuMap(allPlayers, statsSource = 'ema') {
   const map = {};
   for (const cat of CATEGORIES) {
     const vals = allPlayers
-      .map(p => getPlayerMu(p, cat))
+      .map(p => getPlayerMu(p, cat, statsSource))
       .filter(v => v !== null && !isNaN(v));
     map[cat.key] = vals;
   }
@@ -85,20 +104,34 @@ export const DB_Z_KEYS = {
   TO: 'z_tov',
 };
 
+// Returns precomputed category z-score from active projection source or computes from league stats
+export function getPlayerZScore(player, cat, statsSource = 'ema', fallbackMean = 0, fallbackStd = 1) {
+  const s = getPlayerStatsObject(player, statsSource);
+  if (!s) return null;
+  const dbKey = DB_Z_KEYS[cat.key];
+  const dbZ = s[dbKey];
+  if (dbZ !== undefined && dbZ !== null && !isNaN(dbZ)) {
+    return Number(dbZ);
+  }
+  const mu = getPlayerMu(player, cat, statsSource);
+  if (mu === null) return null;
+  let z = (mu - fallbackMean) / (fallbackStd || 1);
+  if (cat.lowerBetter) z = -z;
+  return z;
+}
+
+export function getPlayerTotalZ(player, statsSource = 'ema') {
+  const s = getPlayerStatsObject(player, statsSource);
+  const rawZ = s?.z_total;
+  if (rawZ != null && !isNaN(rawZ)) return Number(rawZ);
+  return player?.z_total ?? player?.ema_stats?.z_total ?? 0;
+}
+
 // Given a league's team list (from the API payload), compute z-scores for each
 // player on each category, then compute summed z-scores for ranking.
-//
-// allTeams: Team[] from API — each has .players[].ema_stats
-// activeCats: string[] of active category keys (not punted)
-//
-// Returns the same teams with each player augmented with:
-//   player.zScores: { [catKey]: number }
-//   player.z_total: number  (backend standardized total z-score)
-//   player.zSum:    number  (sum of z-scores for active cats)
-//   player.rank:    number
-export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => c.key)) {
+export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => c.key), statsSource = 'ema') {
   const allPlayers = allTeams.flatMap(t => t.players);
-  const leagueMuMap = buildLeagueMuMap(allPlayers);
+  const leagueMuMap = buildLeagueMuMap(allPlayers, statsSource);
 
   // Pre-compute league mean & std per cat
   const stats = {};
@@ -112,16 +145,17 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
   // Augment each player
   for (const team of allTeams) {
     for (const player of team.players) {
+      const s = getPlayerStatsObject(player, statsSource);
       player.zScores = {};
       let zSum = 0;
       for (const cat of CATEGORIES) {
         const dbKey = DB_Z_KEYS[cat.key];
-        const dbZ = player.ema_stats?.[dbKey] ?? player[dbKey];
+        const dbZ = s?.[dbKey] ?? player[dbKey];
         if (dbZ !== undefined && dbZ !== null && !isNaN(dbZ)) {
           player.zScores[cat.key] = Number(dbZ);
           if (activeCats.includes(cat.key)) zSum += Number(dbZ);
         } else {
-          const mu = getPlayerMu(player, cat);
+          const mu = getPlayerMu(player, cat, statsSource);
           if (mu === null) { player.zScores[cat.key] = null; continue; }
           let z = (mu - stats[cat.key].mean) / stats[cat.key].std;
           if (cat.lowerBetter) z = -z;
@@ -130,7 +164,7 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
         }
       }
 
-      const rawZTotal = player.z_total ?? player.ema_stats?.z_total;
+      const rawZTotal = s?.z_total ?? player.z_total;
       if (activeCats.length === CATEGORIES.length && rawZTotal != null && !isNaN(rawZTotal)) {
         player.z_total = Number(rawZTotal);
         player.zSum = Number(rawZTotal);
@@ -149,8 +183,9 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
 // Rank players on a given team by their zSum (descending).
 // Returns player list with .rank property.
 export function rankPlayers(players) {
+  const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
   const sorted = [...players]
-    .filter(p => p.selected_position !== 'IL' && p.selected_position !== 'NA')
+    .filter(p => !irSet.has(String(p.selected_position || '').toUpperCase().trim()))
     .sort((a, b) => ((b.z_total ?? b.zSum) ?? -999) - ((a.z_total ?? a.zSum) ?? -999));
 
   return sorted.map((p, i) => ({ ...p, rank: i + 1 }));
@@ -159,10 +194,11 @@ export function rankPlayers(players) {
 // Compute team-level category μ for weekly projection.
 // Assumes projGames games in a week (default 3.5).
 // Returns: { [catKey]: { mu, ci95Low, ci95High, ci68Low, ci68High, fgMakes, fgAttempts, ftMakes, ftAttempts } }
-export function computeTeamWeeklyProjection(players, projGames = 3.5) {
+export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSource = 'ema') {
   const result = {};
-  const activePlayers = players.filter(
-    p => p.selected_position !== 'IL' && p.selected_position !== 'NA'
+  const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
+  const activePlayers = (players || []).filter(
+    p => !irSet.has(String(p?.selected_position || '').toUpperCase().trim())
   );
 
   // Accumulate raw FGM/FGA and FTM/FTA across active players for percentage cats
@@ -170,7 +206,7 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5) {
   let totalFGMVar = 0, totalFGAVar = 0, totalFTMVar = 0, totalFTAVar = 0;
 
   for (const player of activePlayers) {
-    const s = player.ema_stats;
+    const s = getPlayerStatsObject(player, statsSource);
     if (!s) continue;
     const gp = s.mu_min > 0 ? projGames : 0;
     if (gp > 0) {
@@ -204,10 +240,11 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5) {
         : 0;
     } else {
       for (const player of activePlayers) {
-        const mu = getPlayerMu(player, cat);
-        const variance = getPlayerVar(player, cat);
+        const mu = getPlayerMu(player, cat, statsSource);
+        const variance = getPlayerVar(player, cat, statsSource);
         if (mu === null) continue;
-        const gp = player.ema_stats?.mu_min > 0 ? projGames : 0;
+        const s = getPlayerStatsObject(player, statsSource);
+        const gp = s?.mu_min > 0 ? projGames : 0;
         teamMu += mu * gp;
         if (variance !== null) teamVar += variance * gp;
       }
