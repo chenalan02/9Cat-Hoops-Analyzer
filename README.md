@@ -12,24 +12,24 @@ A full-stack analytics workbench for Yahoo Fantasy Basketball 9-category head-to
 ## System Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Sources["Data Sources"]
-        NBA["nba_api (Local 03:00 AM)\nLogs, Schedule, Bios"]
-        FP["FantasyPros Scraper\nPreseason, ROS & Weekly"]
+flowchart TD
+    subgraph Sources["1. Data Ingestion"]
+        NBA["nba_api (Local 03:00 AM) — Logs, Schedule, Bios"]
+        FP["FantasyPros Scraper — Preseason, ROS & Weekly"]
     end
 
-    subgraph Databricks["Databricks Lakehouse (03:15 AM)"]
-        Bronze[("Bronze\nRaw Volumes & Tables")]
-        Silver[("Silver\nCleaned & Deduplicated")]
-        Gold[("Gold\nML Priors, EMA & Z-Scores")]
+    subgraph Databricks["2. Databricks Lakehouse (03:15 AM)"]
+        Bronze[("Bronze Layer — Raw UC Volumes & Tables")]
+        Silver[("Silver Layer — Cleaned & Deduplicated")]
+        Gold[("Gold Layer — ML Priors, EMA & Z-Scores")]
         Bronze --> Silver --> Gold
     end
 
-    subgraph App["Application Stack"]
-        Backend["FastAPI Backend (:8000)\n03:30 AM Cache Sync\nLineup & Matchup Engines"]
-        Yahoo["Yahoo Fantasy API\nyfpy + OAuth2"]
-        Frontend["React 18 SPA\nAnalytics, Matchup,\nStreamers, Trade & Draft"]
-        Yahoo <-->|"Live Rosters & Scores"| Backend
+    subgraph App["3. Application Stack"]
+        Backend["FastAPI Backend (:8000) — 03:30 AM Cache Sync, Lineup & Matchup Engines"]
+        Yahoo["Yahoo Fantasy API (yfpy + OAuth2)"]
+        Frontend["React 18 SPA — Analytics, Matchup, Streamers, Trade & Draft"]
+        Backend <-->|"Live Rosters & Scores"| Yahoo
         Backend <-->|"/api/v1/*"| Frontend
     end
 
