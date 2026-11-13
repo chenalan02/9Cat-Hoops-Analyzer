@@ -1,7 +1,9 @@
 import datetime
+import decimal
+import gc
+import math
 from typing import Any
 
-import numpy as np
 from databricks import sql
 
 from backend.core.config import Settings
@@ -20,6 +22,44 @@ def resolve_table_key(stats_source: str) -> str:
     return SOURCE_KEY_ALIASES.get(stats_source, stats_source)
 
 
+def _normalize_db_value(value: Any) -> Any:
+    if isinstance(value, float):
+        return None if not math.isfinite(value) else value
+    if isinstance(value, decimal.Decimal):
+        float_val = float(value)
+        return None if not math.isfinite(float_val) else float_val
+    return value
+
+
+def _fetch_schedule_rows(cursor: Any) -> list[dict[str, Any]]:
+    cursor.execute("SELECT * FROM nba_fantasy.gold.nba_games_schedule")
+    columns = [desc[0] for desc in cursor.description]
+    rows = cursor.fetchall()
+    return [
+        {col: _normalize_db_value(val) for col, val in zip(columns, row)}
+        for row in rows
+    ]
+
+
+def _fetch_player_table_dict(cursor: Any, table_name: str) -> dict[str, dict[str, Any]]:
+    cursor.execute(f"SELECT * FROM nba_fantasy.gold.{table_name}")
+    columns = [desc[0] for desc in cursor.description]
+    name_idx = columns.index("PLAYER_NAME")
+    rows = cursor.fetchall()
+
+    table_dict: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        player_name = row[name_idx]
+        if player_name is None:
+            continue
+        table_dict[player_name] = {
+            col: _normalize_db_value(val)
+            for idx, (col, val) in enumerate(zip(columns, row))
+            if idx != name_idx
+        }
+    return table_dict
+
+
 def refresh_databricks_cache(app_state: Any, settings: Settings) -> None:
     logger.info("Refreshing Databricks projection tables and NBA schedule.")
 
@@ -29,23 +69,16 @@ def refresh_databricks_cache(app_state: Any, settings: Settings) -> None:
         access_token=settings.databricks_token,
     ) as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM nba_fantasy.gold.nba_games_schedule")
-            schedule_df = cursor.fetchall_arrow().to_pandas()
-
+            schedule_rows = _fetch_schedule_rows(cursor)
             player_stats: dict[str, dict[str, Any]] = {}
             for table in STATS_TABLES:
-                cursor.execute(f"SELECT * FROM nba_fantasy.gold.{table}")
-                df = cursor.fetchall_arrow().to_pandas()
-                player_stats[table] = (
-                    df.replace({np.nan: None})
-                    .set_index("PLAYER_NAME")
-                    .to_dict(orient="index")
-                )
+                player_stats[table] = _fetch_player_table_dict(cursor, table)
 
-    app_state.nba_schedule = schedule_df
+    app_state.nba_schedule = schedule_rows
     app_state.player_stats = player_stats
     app_state.last_refreshed = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    logger.info("Databricks cache updated (%d schedule rows).", len(schedule_df))
+    gc.collect()
+    logger.info("Databricks cache updated (%d schedule rows).", len(schedule_rows))
 
 
 def resolve_streamer_stats_pools(

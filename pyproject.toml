@@ -13,15 +13,11 @@ dependencies = [
     "fastapi (>=0.135.1,<0.136.0)",
     "pydantic (>=2.12.5,<3.0.0)",
     "uvicorn[standard] (>=0.41.0,<0.42.0)",
-    "pandas (>=2.2.3,<2.4.0)",
-    "nba-api (>=1.11.4,<2.0.0)",
     "python-dotenv (>=1.1.1,<2.0.0)",
-    "databricks-sdk (>=0.94.0,<0.95.0)",
     "yfpy (>=17.0.0,<18.0.0)",
-    "databricks-sql-connector[pyarrow] (>=4.2.5,<5.0.0)",
+    "databricks-sql-connector (>=4.2.5,<5.0.0)",
     "apscheduler (>=3.11.2,<4.0.0)",
-    "pytz (>=2026.1.post1,<2027.0)",
-    "pulp (>=3.3.1,<4.0.0)"
+    "pytz (>=2026.1.post1,<2027.0)"
 ]
 
 
@@ -30,6 +26,12 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
+etl = [
+    "pandas (>=2.2.3,<2.4.0)",
+    "nba-api (>=1.11.4,<2.0.0)",
+    "databricks-sdk (>=0.94.0,<0.95.0)",
+    "pyarrow (>=23.0.1,<24.0.0)"
+]
 dev = [
     "matplotlib (>=3.10.8,<4.0.0)",
     "jupyter (>=1.1.1,<2.0.0)",

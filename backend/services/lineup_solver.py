@@ -1,7 +1,7 @@
+import datetime
 import threading
 
 import numpy as np
-import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 from backend.services.stats_utils import (
@@ -9,10 +9,12 @@ from backend.services.stats_utils import (
     OUT_TAGS,
     compute_player_rank_score,
     get_safe_player_stats,
+    iter_dates,
     normalize_nba_team,
+    parse_iso_date,
 )
 
-# Reuse normalized schedule copy per Databricks DataFrame identity until daily refresh replaces it.
+# Reuse indexed schedule map per Databricks payload identity until daily refresh replaces it.
 _SCHEDULE_CACHE = {"source": None, "prepared": None}
 _SCHEDULE_LOCK = threading.Lock()
 
@@ -22,29 +24,50 @@ def get_prepared_schedule(nba_schedule):
         if _SCHEDULE_CACHE["source"] is nba_schedule and _SCHEDULE_CACHE["prepared"] is not None:
             return _SCHEDULE_CACHE["prepared"]
 
-    sched = nba_schedule.copy()
-    if "scheduled_date" not in sched.columns and sched.index.name == "scheduled_date":
-        sched = sched.reset_index()
-    sched["scheduled_date"] = pd.to_datetime(sched["scheduled_date"]).dt.tz_localize(None).dt.floor("D")
-    sched["team_normalized"] = sched["team"].map(normalize_nba_team)
+    if hasattr(nba_schedule, "to_dict"):
+        frame = nba_schedule.reset_index() if "scheduled_date" not in nba_schedule.columns else nba_schedule
+        rows = frame.to_dict(orient="records")
+    else:
+        rows = nba_schedule or []
+
+    by_date = {}
+    for row in rows:
+        raw_date = row.get("scheduled_date")
+        if raw_date is None:
+            continue
+        try:
+            game_date = parse_iso_date(raw_date)
+        except (ValueError, TypeError):
+            continue
+        team_norm = normalize_nba_team(row.get("team"))
+        if not team_norm:
+            continue
+        day_map = by_date.setdefault(game_date, {})
+        day_map[team_norm] = {**row, "team_normalized": team_norm}
 
     with _SCHEDULE_LOCK:
         _SCHEDULE_CACHE["source"] = nba_schedule
-        _SCHEDULE_CACHE["prepared"] = sched
-    return sched
+        _SCHEDULE_CACHE["prepared"] = by_date
+    return by_date
 
 
 def calculate_weekly_player_games(team1, team2, date_start, nba_schedule):
-    date_start_dt = pd.to_datetime(date_start).tz_localize(None).floor("D")
-    monday = (date_start_dt - pd.Timedelta(days=date_start_dt.weekday())).floor("D")
-    next_monday = monday + pd.Timedelta(days=7)
+    date_start_dt = parse_iso_date(date_start)
+    monday = date_start_dt - datetime.timedelta(days=date_start_dt.weekday())
+    sunday = monday + datetime.timedelta(days=6)
 
     sched = get_prepared_schedule(nba_schedule)
-    week_sched = sched[(sched["scheduled_date"] >= monday) & (sched["scheduled_date"] < next_monday)]
-    team_total_games = week_sched.groupby("team_normalized")["scheduled_date"].count().to_dict()
-
-    played_sched = week_sched[week_sched["scheduled_date"] < date_start_dt]
-    team_played_games = played_sched.groupby("team_normalized")["scheduled_date"].count().to_dict()
+    team_total_games = {}
+    team_played_games = {}
+    for day in iter_dates(monday, sunday):
+        day_teams = sched.get(day)
+        if not day_teams:
+            continue
+        is_played = day < date_start_dt
+        for team_norm in day_teams:
+            team_total_games[team_norm] = team_total_games.get(team_norm, 0) + 1
+            if is_played:
+                team_played_games[team_norm] = team_played_games.get(team_norm, 0) + 1
 
     player_games = {"team1": {}, "team2": {}}
     for team_key, team in (("team1", team1), ("team2", team2)):
@@ -191,19 +214,15 @@ def solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sourc
     team1_schedule = {}
     team2_schedule = {}
 
-    date_start_dt = pd.to_datetime(date_start).tz_localize(None).floor("D")
-    next_sunday = (date_start_dt + pd.Timedelta(days=(6 - date_start_dt.weekday()))).floor("D")
+    date_start_dt = parse_iso_date(date_start)
+    next_sunday = date_start_dt + datetime.timedelta(days=(6 - date_start_dt.weekday()))
+    window_dates = list(iter_dates(date_start_dt, next_sunday))
 
     sched = get_prepared_schedule(nba_schedule)
-    window_sched = sched[(sched["scheduled_date"] >= date_start_dt) & (sched["scheduled_date"] <= next_sunday)]
 
-    daily_games_by_date = {}
-    for date_val, group in window_sched.groupby("scheduled_date"):
-        daily_games_by_date[date_val.strftime("%Y-%m-%d")] = group.set_index("team_normalized").to_dict(orient="index")
-
-    for date in pd.date_range(start=date_start_dt, end=next_sunday, freq="D"):
-        date_str = date.strftime("%Y-%m-%d")
-        games_info = daily_games_by_date.get(date_str, {})
+    for day in window_dates:
+        date_str = day.isoformat()
+        games_info = sched.get(day, {})
         team1_schedule[date_str] = {}
         team2_schedule[date_str] = {}
         teams_set = set(games_info.keys())
@@ -234,8 +253,8 @@ def solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_sourc
                 "rank_score": compute_player_rank_score(player, player_stats, stats_source),
             })
 
-        for date in pd.date_range(start=date_start_dt, end=next_sunday, freq="D"):
-            date_str = date.strftime("%Y-%m-%d")
+        for day in window_dates:
+            date_str = day.isoformat()
             team_lineups[team_num][date_str] = {}
             if not players or not active_slots:
                 continue

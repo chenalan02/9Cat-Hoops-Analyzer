@@ -103,12 +103,13 @@ class FantasyLeague:
                 time.sleep(0.4)
                 return t_id, yahoo_query.get_team_info(t_id)
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=2) as executor:
             fetched_results = list(executor.map(_fetch_single_team, range(1, self.num_teams + 1)))
 
         fetched_results.sort(key=lambda item: item[0])
 
-        for team_id, team_info in fetched_results:
+        for idx, (team_id, team_info) in enumerate(fetched_results):
+            fetched_results[idx] = None
             if str(team_id) not in self.weekly_matchups and getattr(team_info, "matchups", None):
                 for m in team_info.matchups:
                     m_week = getattr(m, "week", None)

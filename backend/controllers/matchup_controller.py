@@ -1,7 +1,5 @@
 from typing import Any
 
-import pandas as pd
-
 from backend.core.exceptions import (
     AppError,
     BadRequestError,
@@ -11,6 +9,7 @@ from backend.core.exceptions import (
 from backend.core.logging import logger
 from backend.schemas.matchup import MatchupProjectionRequest
 from backend.services.matchup_service import matchup_analysis, matchup_analysis_monte_carlo
+from backend.services.stats_utils import parse_iso_date
 from backend.services.yahoo_client import get_yahoo_query
 
 
@@ -20,7 +19,7 @@ def _validate_matchup_inputs(request: MatchupProjectionRequest) -> None:
     if not isinstance(request.team2.get("players"), list) or request.team2.get("team_id") is None:
         raise BadRequestError("team2 must include team_id and a players list.")
     try:
-        pd.to_datetime(request.date_start)
+        parse_iso_date(request.date_start)
     except (ValueError, TypeError) as exc:
         raise BadRequestError("date_start must be a valid ISO date string (YYYY-MM-DD).") from exc
 

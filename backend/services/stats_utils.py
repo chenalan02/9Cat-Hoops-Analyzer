@@ -1,8 +1,43 @@
+import datetime
 import math
 
 import numpy as np
 
 from backend.utils import clean_player_name
+
+_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y", "%Y-%m-%d %H:%M:%S")
+
+
+def parse_iso_date(value):
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Invalid date value: {value!r}")
+
+    text = value.strip()
+    try:
+        return datetime.date.fromisoformat(text)
+    except ValueError:
+        pass
+    try:
+        return datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized date format: {value!r}")
+
+
+def iter_dates(start_date, end_date):
+    current = start_date
+    while current <= end_date:
+        yield current
+        current += datetime.timedelta(days=1)
 
 OUT_TAGS = frozenset({"O", "INJ", "OUT", "IL", "INJURED", "SUSP", "NA", "IR"})
 Q_TAGS = frozenset({"Q", "GTD", "DTD", "DOUBTFUL"})

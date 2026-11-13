@@ -1,5 +1,6 @@
+import datetime
+
 import numpy as np
-import pandas as pd
 
 from backend.services import matchup_service, yahoo_client
 from backend.services.lineup_solver import (
@@ -20,7 +21,9 @@ from backend.services.stats_utils import (
     compute_player_rank_score,
     extract_rank_and_z,
     get_safe_player_stats,
+    iter_dates,
     normalize_nba_team,
+    parse_iso_date,
     prob_positive,
     resolve_player_ros,
     stats_to_vec,
@@ -77,7 +80,7 @@ def _adjacent_b2b_pairs(dates_list):
     sorted_d = sorted(dates_list)
     pairs = []
     for i in range(len(sorted_d) - 1):
-        if (pd.to_datetime(sorted_d[i + 1]) - pd.to_datetime(sorted_d[i])).days == 1:
+        if (parse_iso_date(sorted_d[i + 1]) - parse_iso_date(sorted_d[i])).days == 1:
             pairs.append([sorted_d[i], sorted_d[i + 1]])
     return pairs
 
@@ -176,12 +179,12 @@ def get_streamer_recommendations(
 ):
     pickup_mode = "today" if str(pickup_mode or "").lower().strip() == "today" else "week"
     punted_set = {canonical_cat(c) for c in (punted_cats or []) if canonical_cat(c)}
-    date_start_dt = pd.to_datetime(date_start).tz_localize(None)
-    today_dt = date_start_dt.floor("D")
-    today_str = today_dt.strftime("%Y-%m-%d")
-    next_sunday = (today_dt + pd.Timedelta(days=(6 - today_dt.weekday()))).floor("D")
+    today_dt = parse_iso_date(date_start)
+    today_str = today_dt.isoformat()
+    next_sunday = today_dt + datetime.timedelta(days=(6 - today_dt.weekday()))
 
-    week_date_strings = [d.strftime("%Y-%m-%d") for d in pd.date_range(start=today_dt, end=next_sunday, freq="D")]
+    week_dates = list(iter_dates(today_dt, next_sunday))
+    week_date_strings = [d.isoformat() for d in week_dates]
     window_date_strings = [today_str] if pickup_mode == "today" else week_date_strings
     window_date_set = set(window_date_strings)
 
@@ -245,11 +248,11 @@ def get_streamer_recommendations(
         return int(p_g.get("remaining", 0) or 0)
 
     sched = get_prepared_schedule(nba_schedule)
-    week_sched = sched[(sched["scheduled_date"] >= today_dt) & (sched["scheduled_date"] <= next_sunday)]
-    team_week_game_dates = {
-        team_abbr: set(group["scheduled_date"].dt.strftime("%Y-%m-%d"))
-        for team_abbr, group in week_sched.groupby("team_normalized")
-    }
+    team_week_game_dates = {}
+    for day in week_dates:
+        day_str = day.isoformat()
+        for team_abbr in sched.get(day, {}):
+            team_week_game_dates.setdefault(team_abbr, set()).add(day_str)
     team_game_dates = {
         team_abbr: (dates & window_date_set)
         for team_abbr, dates in team_week_game_dates.items()
