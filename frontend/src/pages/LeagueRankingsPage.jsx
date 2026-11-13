@@ -4,45 +4,39 @@ import { TeamDataContext } from '../App.jsx';
 import { CATEGORIES, getPlayerMu, computeLeagueZScores, zScoreClass, zScoreBgClass } from '../utils/zScore.js';
 import { formatMu } from '../utils/formatters.js';
 import LeagueWeeklyProjectionsChart from '../components/LeagueWeeklyProjectionsChart.jsx';
+import YahooRefreshButton from '../components/common/YahooRefreshButton.jsx';
+import { LoadingView, EmptyState } from '../components/common/PageStateGuard.jsx';
+import SortIcon from '../components/common/SortIcon.jsx';
 import './LeagueRankingsPage.css';
+
+const IR_SLOTS = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
+
+function rankZ(rank, total) {
+  if (!rank || !total) return 0;
+  return ((total - rank) / (total - 1)) * 3 - 1.5;
+}
 
 export default function LeagueRankingsPage() {
   const { leagueData, myTeam, loading, refreshTeam } = useContext(TeamDataContext);
   const navigate = useNavigate();
-  const [sortKey, setSortKey]   = useState('overall');
-  const [sortDir, setSortDir]   = useState('asc');
-  const [justRefreshed, setJustRefreshed] = useState(false);
+  const [sortKey, setSortKey] = useState('overall');
+  const [sortDir, setSortDir] = useState('asc');
 
-  const handleRefresh = async () => {
-    if (loading || !refreshTeam) return;
-    try {
-      await refreshTeam();
-      setJustRefreshed(true);
-      setTimeout(() => setJustRefreshed(false), 2500);
-    } catch (err) {
-      console.error('Refresh failed:', err);
-    }
-  };
-
-
-  // Compute league teams with Rest of Season (ROS) projections and Z-scores
   const rosLeagueTeams = useMemo(() => {
     if (!leagueData?.teams) return [];
-    // Clone teams and players to compute ROS-based Z-scores without mutating other tabs
+    // Clone teams so ROS Z-score computation does not mutate EMA-scored data in other tabs.
     const cloned = leagueData.teams.map(t => ({
       ...t,
-      players: (t.players || []).map(p => ({ ...p }))
+      players: (t.players || []).map(p => ({ ...p })),
     }));
     return computeLeagueZScores(cloned, CATEGORIES.map(c => c.key), 'ros');
   }, [leagueData]);
 
-  // Compute team-level category μ for all teams under Rest of Season (ROS)
   const teamStats = useMemo(() => {
     if (!rosLeagueTeams.length) return [];
     return rosLeagueTeams.map(team => {
-      const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
       const activePlayers = team.players.filter(
-        p => !irSet.has(String(p.selected_position || '').toUpperCase().trim())
+        p => !IR_SLOTS.has(String(p.selected_position || '').toUpperCase().trim())
       );
       const catMus = {};
       CATEGORIES.forEach(cat => {
@@ -54,14 +48,13 @@ export default function LeagueRankingsPage() {
     });
   }, [rosLeagueTeams]);
 
-  // Rank each team per category
   const withRanks = useMemo(() => {
     return teamStats.map(ts => {
       const catRanks = {};
       CATEGORIES.forEach(cat => {
         const vals = teamStats.map(t => t.catMus[cat.key] ?? (cat.lowerBetter ? Infinity : -Infinity));
-        const sorted = [...vals].sort((a, b) => cat.lowerBetter ? a - b : b - a);
-        catRanks[cat.key] = sorted.indexOf(ts.catMus[cat.key]) + 1;
+        const rankOrder = [...vals].sort((a, b) => (cat.lowerBetter ? a - b : b - a));
+        catRanks[cat.key] = rankOrder.indexOf(ts.catMus[cat.key]) + 1;
       });
       const overallRank = [...teamStats]
         .sort((a, b) => b.zSum - a.zSum)
@@ -70,7 +63,6 @@ export default function LeagueRankingsPage() {
     });
   }, [teamStats]);
 
-  // Sort
   const sorted = useMemo(() => {
     return [...withRanks].sort((a, b) => {
       const av = sortKey === 'overall' ? a.overallRank : (a.catRanks[sortKey] ?? 999);
@@ -80,46 +72,30 @@ export default function LeagueRankingsPage() {
   }, [withRanks, sortKey, sortDir]);
 
   const handleSort = (key) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
-  };
-
-  const SortIcon = ({ col }) => {
-    if (sortKey !== col) return <span className="sort-icon">⇅</span>;
-    return <span className="sort-icon active">{sortDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-
-  const totalTeams = sorted.length;
-
-  // Rank-based z approximation for coloring (rank 1 = best)
-  const rankZ = (rank, total) => {
-    if (!rank || !total) return 0;
-    return (total - rank) / (total - 1) * 3 - 1.5;
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
   };
 
   if (loading) {
-    return (
-      <div className="page-wrapper center-content">
-        <div className="spinner" style={{ width: 36, height: 36 }} />
-        <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Loading your team…</p>
-      </div>
-    );
+    return <LoadingView message="Loading your team…" />;
   }
 
   if (!leagueData) {
     return (
-      <div className="page-wrapper center-content">
-        <div className="empty-state">
-          <div style={{ fontSize: '4rem' }}>🏆</div>
-          <h2 style={{ marginBottom: '0.5rem' }}>No League Data</h2>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-            Analyze your team first to unlock league power rankings.
-          </p>
-          <button className="btn-primary" onClick={() => navigate('/')}>Analyze My Team</button>
-        </div>
-      </div>
+      <EmptyState
+        icon="🏆"
+        title="No League Data"
+        description="Analyze your team first to unlock league power rankings."
+        actionLabel="Analyze My Team"
+        onAction={() => navigate('/')}
+      />
     );
   }
+
+  const totalTeams = sorted.length;
 
   return (
     <div className="league-page page-wrapper fade-up">
@@ -131,19 +107,12 @@ export default function LeagueRankingsPage() {
               {leagueData.name} — {leagueData.season} Season &middot; Rest of Season (ROS)
             </p>
           </div>
-          <button
-            type="button"
-            className="btn-secondary refresh-btn"
-            onClick={handleRefresh}
-            disabled={loading}
+          <YahooRefreshButton
+            loading={loading}
+            onRefresh={refreshTeam}
             title="Reload latest team and league data from Yahoo Fantasy"
-          >
-            <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>🔄</span>
-            <span>{loading ? 'Reloading…' : justRefreshed ? 'Updated!' : 'Reload from Yahoo'}</span>
-          </button>
+          />
         </div>
-
-
 
         <p className="table-hint">
           Rankings based on team-average category &mu; using Rest of Season (ROS) projections. Click column headers to sort.
@@ -154,15 +123,19 @@ export default function LeagueRankingsPage() {
           <table className="data-table league-table" aria-label="League team rankings">
             <thead>
               <tr>
-                <th style={{ textAlign: 'left' }}
+                <th
+                  style={{ textAlign: 'left' }}
                   className={sortKey === 'overall' ? 'sort-active' : ''}
                   onClick={() => handleSort('overall')}
                 >
-                  Team <SortIcon col="overall" />
+                  Team <SortIcon active={sortKey === 'overall'} dir={sortDir} />
                 </th>
-                <th className={sortKey === 'overall' ? 'sort-active' : ''}
-                    onClick={() => handleSort('overall')} style={{ textAlign: 'center' }}>
-                  Overall <SortIcon col="overall" />
+                <th
+                  className={sortKey === 'overall' ? 'sort-active' : ''}
+                  onClick={() => handleSort('overall')}
+                  style={{ textAlign: 'center' }}
+                >
+                  Overall <SortIcon active={sortKey === 'overall'} dir={sortDir} />
                 </th>
                 {CATEGORIES.map(cat => (
                   <th
@@ -170,7 +143,7 @@ export default function LeagueRankingsPage() {
                     className={sortKey === cat.key ? 'sort-active' : ''}
                     onClick={() => handleSort(cat.key)}
                   >
-                    {cat.key} <SortIcon col={cat.key} />
+                    {cat.key} <SortIcon active={sortKey === cat.key} dir={sortDir} />
                   </th>
                 ))}
               </tr>
@@ -193,16 +166,14 @@ export default function LeagueRankingsPage() {
                     </td>
                     {CATEGORIES.map(cat => {
                       const rank = catRanks[cat.key];
-                      const z    = rankZ(rank, totalTeams);
+                      const z = rankZ(rank, totalTeams);
                       return (
                         <td
                           key={cat.key}
                           className={zScoreBgClass(z)}
                           title={`${cat.label}: ${formatMu(catMus[cat.key], cat.key)}`}
                         >
-                          <span className={zScoreClass(z)}>
-                            #{rank}
-                          </span>
+                          <span className={zScoreClass(z)}>#{rank}</span>
                         </td>
                       );
                     })}
@@ -219,9 +190,8 @@ export default function LeagueRankingsPage() {
           <span className="z-bad">■</span> Bottom third
         </p>
 
-        {/* Weekly Projections Chart across all teams */}
-        <LeagueWeeklyProjectionsChart 
-          leagueTeams={rosLeagueTeams} 
+        <LeagueWeeklyProjectionsChart
+          leagueTeams={rosLeagueTeams}
           myTeam={myTeam}
           statsSource="ros"
         />

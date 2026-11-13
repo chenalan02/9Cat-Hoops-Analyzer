@@ -136,6 +136,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .envrc
 .venv
 env/
@@ -210,3 +211,5 @@ __marimo__/
 *.parquet
 node_modules/
 frontend/node_modules/
+yahoo_auth/
+scratch/

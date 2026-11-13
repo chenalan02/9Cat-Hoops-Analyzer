@@ -1,35 +1,55 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
-from backend.utils import *
 
-def _extract_team_id_from_team_obj(t):
-    if t is None:
+from backend.core.logging import logger
+from backend.utils import clean_player_name
+
+
+def _to_plain_data(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    # yfpy models implement __iter__ over field values, so Pydantic would flatten them into lists unless serialized explicitly.
+    serialized = getattr(value, "serialized", None)
+    if callable(serialized):
+        return _to_plain_data(serialized())
+    if isinstance(value, dict):
+        return {k: _to_plain_data(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_plain_data(item) for item in value]
+    return value
+
+
+def _extract_team_id_from_team_obj(team_obj):
+    if team_obj is None:
         return None
-    team_id = getattr(t, 'team_id', None)
+    team_id = getattr(team_obj, "team_id", None)
     if team_id is not None:
         try:
             return int(team_id)
         except (ValueError, TypeError):
             pass
-    if isinstance(t, dict):
-        if 'team_id' in t and t['team_id'] is not None:
+    if isinstance(team_obj, dict):
+        if team_obj.get("team_id") is not None:
             try:
-                return int(t['team_id'])
+                return int(team_obj["team_id"])
             except (ValueError, TypeError):
                 pass
-        if 'team' in t:
-            return _extract_team_id_from_team_obj(t['team'])
-    team_key = getattr(t, 'team_key', None) or (t.get('team_key') if isinstance(t, dict) else None)
+        if "team" in team_obj:
+            return _extract_team_id_from_team_obj(team_obj["team"])
+    team_key = getattr(team_obj, "team_key", None) or (team_obj.get("team_key") if isinstance(team_obj, dict) else None)
     if team_key:
-        parts = str(team_key).split('.t.')
+        parts = str(team_key).split(".t.")
         if len(parts) > 1 and parts[-1].isdigit():
             return int(parts[-1])
     return None
 
-def _extract_teams_from_matchup(m):
-    teams = getattr(m, 'teams', None)
-    if teams is None and isinstance(m, dict):
-        teams = m.get('teams')
+
+def _extract_teams_from_matchup(matchup):
+    teams = getattr(matchup, "teams", None)
+    if teams is None and isinstance(matchup, dict):
+        teams = matchup.get("teams")
     if isinstance(teams, list) and len(teams) >= 2:
         t1 = _extract_team_id_from_team_obj(teams[0])
         t2 = _extract_team_id_from_team_obj(teams[1])
@@ -37,10 +57,11 @@ def _extract_teams_from_matchup(m):
             return t1, t2
     return None, None
 
-class FantasyLeague():
+
+class FantasyLeague:
     def __init__(self, yahoo_query, player_stats):
         league_info = yahoo_query.get_league_info()
-        time.sleep(0.05)  # to avoid hitting Yahoo API rate limits
+        time.sleep(0.05)
         self.current_week = league_info.current_week
         self.league_id = league_info.league_id
         self.name = league_info.name
@@ -49,37 +70,32 @@ class FantasyLeague():
         self.roster_positions = league_info.settings.roster_positions
         self.stat_categories = league_info.settings.stat_categories
 
-        # Cache league_key on yahoo_query so subsequent team queries don't trigger
-        # redundant calls to get_current_game_metadata()
-        league_key = getattr(league_info, 'league_key', None)
+        # Cache league_key on yahoo_query so downstream team calls skip extra metadata requests.
+        league_key = getattr(league_info, "league_key", None)
         if league_key:
             yahoo_query.league_key = league_key
             yahoo_query._cached_league_key = league_key
 
-        # Fetch current week matchups to automatically map opponents
         self.weekly_matchups = {}
-        # Method 1: get_league_matchups_by_week
         try:
             time.sleep(0.05)
             matchups_data = yahoo_query.get_league_matchups_by_week(int(self.current_week))
-            m_list = getattr(matchups_data, 'matchups', matchups_data)
+            m_list = getattr(matchups_data, "matchups", matchups_data)
             if isinstance(m_list, list):
                 for m in m_list:
                     t1, t2 = _extract_teams_from_matchup(m)
                     if t1 and t2:
                         self.weekly_matchups[str(t1)] = t2
                         self.weekly_matchups[str(t2)] = t1
-        except Exception as e:
-            print(f"Warning: Could not fetch weekly matchups for week {self.current_week}: {e}")
+        except Exception as exc:
+            logger.warning("Could not fetch weekly matchups for week %s: %s", self.current_week, exc)
 
         self.teams = []
-        # Reuse already fetched num_teams instead of re-fetching the entire league from Yahoo
         try:
             self.num_teams = int(league_info.num_teams)
         except (ValueError, TypeError):
             self.num_teams = 12
 
-        # Fetch teams concurrently in parallel (e.g., 5 workers) instead of 10-14 sequential requests
         def _fetch_single_team(t_id):
             try:
                 return t_id, yahoo_query.get_team_info(t_id)
@@ -90,13 +106,12 @@ class FantasyLeague():
         with ThreadPoolExecutor(max_workers=5) as executor:
             fetched_results = list(executor.map(_fetch_single_team, range(1, self.num_teams + 1)))
 
-        fetched_results.sort(key=lambda x: x[0])
+        fetched_results.sort(key=lambda item: item[0])
 
         for team_id, team_info in fetched_results:
-            # Method 2: Check team_info.matchups if not yet mapped
-            if str(team_id) not in self.weekly_matchups and hasattr(team_info, 'matchups') and team_info.matchups:
+            if str(team_id) not in self.weekly_matchups and getattr(team_info, "matchups", None):
                 for m in team_info.matchups:
-                    m_week = getattr(m, 'week', None)
+                    m_week = getattr(m, "week", None)
                     if m_week is not None and str(m_week) == str(self.current_week):
                         t1, t2 = _extract_teams_from_matchup(m)
                         if t1 and t2:
@@ -104,13 +119,11 @@ class FantasyLeague():
                             self.weekly_matchups[str(t2)] = t1
                             break
 
-            # Method 3: Try get_team_matchups(team_id) if still not mapped
             if str(team_id) not in self.weekly_matchups:
                 try:
                     time.sleep(0.05)
-                    t_matchups = yahoo_query.get_team_matchups(team_id)
-                    for m in (t_matchups or []):
-                        m_week = getattr(m, 'week', None)
+                    for m in (yahoo_query.get_team_matchups(team_id) or []):
+                        m_week = getattr(m, "week", None)
                         if m_week is not None and str(m_week) == str(self.current_week):
                             t1, t2 = _extract_teams_from_matchup(m)
                             if t1 and t2:
@@ -123,77 +136,73 @@ class FantasyLeague():
             current_opp_id = self.weekly_matchups.get(str(team_id))
             self.teams.append(Team(team_info, player_stats, current_opponent_id=current_opp_id))
 
-        # Backfill current_opponent_id on any team that had its matchup discovered later
         for team in self.teams:
             if not team.current_opponent_id:
                 team.current_opponent_id = self.weekly_matchups.get(str(team.team_id))
 
-        print(f"DEBUG: Weekly matchups mapped for week {self.current_week}: {self.weekly_matchups}")
-
+        logger.debug("Weekly matchups mapped for week %s: %s", self.current_week, self.weekly_matchups)
 
     def to_dict(self):
         return {
-            "league_id": self.league_id,
-            "name": self.name,
-            "season": self.season,
-            "scoring_type": self.scoring_type,
+            "league_id": _to_plain_data(self.league_id),
+            "name": _to_plain_data(self.name),
+            "season": _to_plain_data(self.season),
+            "scoring_type": _to_plain_data(self.scoring_type),
             "teams": [team.to_dict() for team in self.teams],
-            "roster_positions": self.roster_positions,
-            "stat_categories": self.stat_categories,
-            "week_num": self.current_week,
-            "weekly_matchups": self.weekly_matchups
+            "roster_positions": _to_plain_data(self.roster_positions),
+            "stat_categories": _to_plain_data(self.stat_categories),
+            "week_num": _to_plain_data(self.current_week),
+            "weekly_matchups": _to_plain_data(self.weekly_matchups),
         }
 
 
-class Team():
+class Team:
     def __init__(self, team_info, player_stats, current_opponent_id=None):
         self.team_id = team_info.team_id
         self.name = team_info.name
         self.logo_url = team_info.team_logos[0].url if team_info.team_logos else None
         self.scoring_type = team_info.league_scoring_type
-        self.rank = team_info.team_standings.rank if getattr(team_info, 'team_standings', None) else None
-        self.record = team_info.team_standings.outcome_totals if getattr(team_info, 'team_standings', None) else None
+        self.rank = team_info.team_standings.rank if getattr(team_info, "team_standings", None) else None
+        self.record = team_info.team_standings.outcome_totals if getattr(team_info, "team_standings", None) else None
         self.current_opponent_id = current_opponent_id
 
-        self.players = []
-        for player in team_info.roster.players:
-            self.players.append(Player(player, player_stats))
+        stats_map = player_stats or {}
+        self.players = [Player(player, stats_map) for player in team_info.roster.players]
 
     def to_dict(self):
         return {
-            "team_id": self.team_id,
-            "name": self.name,
-            "logo_url": self.logo_url,
-            "scoring_type": self.scoring_type,
-            "rank": self.rank,
-            "record": self.record,
-            "current_opponent_id": self.current_opponent_id,
-            "players": [player.to_dict() for player in self.players]
+            "team_id": _to_plain_data(self.team_id),
+            "name": _to_plain_data(self.name),
+            "logo_url": _to_plain_data(self.logo_url),
+            "scoring_type": _to_plain_data(self.scoring_type),
+            "rank": _to_plain_data(self.rank),
+            "record": _to_plain_data(self.record),
+            "current_opponent_id": _to_plain_data(self.current_opponent_id),
+            "players": [player.to_dict() for player in self.players],
         }
 
 
-class Player():
+class Player:
     def __init__(self, player, player_stats):
         self.name = clean_player_name(player.name.full)
         self.photo_url = player.image_url
         self.status = player.status
-        self.positions = player.display_position # eligible positions
+        self.positions = player.display_position
         self.selected_position = player.selected_position.position
         self.nba_team = player.editorial_team_abbr
-        self.ema_stats = Stats(player_stats["ema"].get(self.name, {}))
-        self.ros_stats = Stats(player_stats["ros_rankings"].get(self.name, {}))
-        self.weekly_stats = Stats(player_stats["weekly_rankings"].get(self.name, {}))
-        self.preseason_stats = Stats(player_stats["preseason_rankings"].get(self.name, {}))
+        self.ema_stats = Stats((player_stats.get("ema") or {}).get(self.name, {}))
+        self.ros_stats = Stats((player_stats.get("ros_rankings") or {}).get(self.name, {}))
+        self.weekly_stats = Stats((player_stats.get("weekly_rankings") or {}).get(self.name, {}))
+        self.preseason_stats = Stats((player_stats.get("preseason_rankings") or {}).get(self.name, {}))
 
-        # Direct z_total (prefers ema, then ros, weekly, preseason)
         raw_z = (
-            getattr(self.ema_stats, 'z_total', None)
-            if getattr(self.ema_stats, 'z_total', None) is not None
-            else getattr(self.ros_stats, 'z_total', None)
-            if getattr(self.ros_stats, 'z_total', None) is not None
-            else getattr(self.weekly_stats, 'z_total', None)
-            if getattr(self.weekly_stats, 'z_total', None) is not None
-            else getattr(self.preseason_stats, 'z_total', None)
+            getattr(self.ema_stats, "z_total", None)
+            if getattr(self.ema_stats, "z_total", None) is not None
+            else getattr(self.ros_stats, "z_total", None)
+            if getattr(self.ros_stats, "z_total", None) is not None
+            else getattr(self.weekly_stats, "z_total", None)
+            if getattr(self.weekly_stats, "z_total", None) is not None
+            else getattr(self.preseason_stats, "z_total", None)
         )
         self.z_total = round(float(raw_z), 4) if raw_z is not None else None
 
@@ -209,14 +218,14 @@ class Player():
             "ema_stats": self.ema_stats.to_dict(),
             "ros_stats": self.ros_stats.to_dict(),
             "weekly_stats": self.weekly_stats.to_dict(),
-            "preseason_stats": self.preseason_stats.to_dict()
+            "preseason_stats": self.preseason_stats.to_dict(),
         }
 
 
-class Stats():
+class Stats:
     def __init__(self, stats_dict):
-        for key in stats_dict.keys():
-            setattr(self, key, stats_dict.get(key, None))
+        for key, value in stats_dict.items():
+            setattr(self, key, value)
 
     def to_dict(self):
-        return {key: getattr(self, key) for key in self.__dict__.keys()}
+        return dict(self.__dict__)

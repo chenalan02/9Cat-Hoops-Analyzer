@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { CATEGORIES, computeTeamWeeklyProjection } from '../utils/zScore.js';
-import { formatMu, ordinal } from '../utils/formatters.js';
+import { formatMu } from '../utils/formatters.js';
 import './LeagueWeeklyProjectionsChart.css';
 
 export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam = null, statsSource = 'ros' }) {
@@ -15,7 +15,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
     return CATEGORIES.find(c => c.key === activeCatKey) || CATEGORIES[0];
   }, [activeCatKey]);
 
-  // Compute weekly projection and +/- 2 standard deviations for all teams
   const chartData = useMemo(() => {
     if (!leagueTeams.length) return [];
 
@@ -24,8 +23,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
       const catProj = proj[activeCatKey];
       
       const mu = catProj?.mu ?? 0;
-      // Get standard deviation (sigma) from 68% confidence interval high bound
-      // since ci68High = mu + sigma
       const sigma = catProj ? Math.max(catProj.ci68High - catProj.mu, 0) : 0;
       
       const errLow = mu - 2 * sigma;
@@ -43,16 +40,14 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
       };
     });
 
-    // Sort by projected mean value: descending for most stats, ascending for turnovers (since lower is better)
     return [...data].sort((a, b) => {
       if (activeCatKey === 'TO') {
         return a.mu - b.mu;
       }
       return b.mu - a.mu;
     });
-  }, [leagueTeams, activeCatKey, projGames, myTeam]);
+  }, [leagueTeams, activeCatKey, projGames, myTeam, statsSource]);
 
-  // Handle Games per Week input change
   const handleGamesChange = (e) => {
     setProjGamesInput(e.target.value);
     const val = parseFloat(e.target.value);
@@ -61,7 +56,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
     }
   };
 
-  // Dimensions for SVG
   const width = 800;
   const height = 400;
   const padding = { top: 40, right: 30, bottom: 65, left: 60 };
@@ -69,7 +63,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  // Scale Y-axis based on the data bounds (with 10% padding)
   const yScales = useMemo(() => {
     if (!chartData.length) return { yMin: 0, yMax: 100 };
     
@@ -80,7 +73,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
     const absoluteMax = Math.max(...highs);
     const diff = absoluteMax - absoluteMin;
     
-    // Ensure we don't go below 0 for counting stats, but zoom in on percentages
     const isPct = activeCatKey === 'FG%' || activeCatKey === 'FT%';
     const yMin = isPct 
       ? Math.max(0, absoluteMin - 0.15 * (diff || 0.1)) 
@@ -102,7 +94,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
   const colWidth = chartData.length ? plotWidth / chartData.length : 50;
   const barWidth = Math.max(12, Math.min(36, colWidth - 16));
 
-  // Generate grid values for Y axis
   const gridTicks = useMemo(() => {
     const numTicks = 5;
     const ticks = [];
@@ -112,7 +103,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
     return ticks;
   }, [yMin, yMax]);
 
-  // Handle tooltip tracking
   const handleMouseMove = (e, teamData) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -137,7 +127,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          {/* Legend */}
           <div className="chart-legend">
             <div className="legend-item">
               <div className="legend-color" style={{ background: 'linear-gradient(180deg, var(--accent, #00e676), #00c864)' }} />
@@ -153,7 +142,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
             </div>
           </div>
 
-          {/* Games Input */}
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
             Games/Week:
             <input
@@ -178,7 +166,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
         </div>
       </div>
 
-      {/* Category Tabs */}
       <div className="category-toggle-bar">
         {CATEGORIES.map(cat => (
           <button
@@ -199,7 +186,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
         ) : (
           <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg">
             <defs>
-              {/* Gradients */}
               <linearGradient id="normalBarGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--accent, #00e676)" stopOpacity="0.85" />
                 <stop offset="100%" stopColor="#00b050" stopOpacity="0.85" />
@@ -218,7 +204,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
               </linearGradient>
             </defs>
 
-            {/* Grid lines */}
             {gridTicks.map((val, idx) => (
               <g key={idx}>
                 <line
@@ -239,18 +224,15 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
               </g>
             ))}
 
-            {/* Render Bars and Error Bars */}
             {chartData.map((d, i) => {
               const xCenter = padding.left + i * colWidth + colWidth / 2;
               const yZero = getY(yMin);
               const yMean = getY(d.mu);
 
-              // Bar dimensions
               const barX = xCenter - barWidth / 2;
               const barY = yMean;
-              const barH = Math.max(yZero - yMean, 2); // At least 2px height for visual feedback
+              const barH = Math.max(yZero - yMean, 2);
 
-              // Error Bar positions (2 standard deviations)
               const yErrTop = getY(d.errHigh);
               const yErrBottom = getY(d.errLow);
               const capWidth = 8;
@@ -259,7 +241,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
 
               return (
                 <g key={d.teamId}>
-                  {/* Mean Bar */}
                   <rect
                     x={barX}
                     y={barY}
@@ -273,7 +254,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
                     className={`chart-bar ${d.isMyTeam ? 'my-team' : ''}`}
                   />
 
-                  {/* Error Bar Line */}
                   {d.sigma > 0 && (
                     <g>
                       <line
@@ -283,7 +263,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
                         y2={yErrTop}
                         className="error-bar-line"
                       />
-                      {/* Top Cap */}
                       <line
                         x1={xCenter - capWidth / 2}
                         y1={yErrTop}
@@ -291,7 +270,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
                         y2={yErrTop}
                         className="error-bar-cap"
                       />
-                      {/* Bottom Cap */}
                       <line
                         x1={xCenter - capWidth / 2}
                         y1={yErrBottom}
@@ -302,7 +280,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
                     </g>
                   )}
 
-                  {/* Team Tick Label (rotated for space) */}
                   <text
                     x={xCenter}
                     y={height - padding.bottom + 16}
@@ -314,7 +291,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
                     {d.teamName.length > 12 ? d.teamName.substring(0, 10) + '..' : d.teamName}
                   </text>
 
-                  {/* Interactive hover trigger zone for full column */}
                   <rect
                     x={padding.left + i * colWidth}
                     y={padding.top}
@@ -331,7 +307,6 @@ export default function LeagueWeeklyProjectionsChart({ leagueTeams = [], myTeam 
         )}
       </div>
 
-      {/* Hover Tooltip */}
       {hoveredTeam && (
         <div
           className="chart-tooltip"

@@ -1,58 +1,242 @@
-.info-page {}
+.info-page {
+  display: flex;
+  flex-direction: column;
+}
 
+.info-block {
+  margin-bottom: 2.75rem;
+}
+
+.info-block-header {
+  margin-bottom: 1.15rem;
+}
+
+.info-block-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  margin-bottom: 0.25rem;
+}
+
+.info-block-desc {
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+/* ─── Projection Sources Grid ───────────────────────── */
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1.25rem;
+}
+
+.source-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.source-best-for {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.source-name {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.source-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ─── Z-Score Color Key Strip ───────────────────────── */
+.z-scale-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.85rem;
+}
+
+.z-scale-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.95rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.z-scale-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.z-scale-label {
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.z-scale-range {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.z-scale-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* ─── Deep-Dive Methodology Grid ────────────────────── */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
   gap: 1.25rem;
-  margin-bottom: 1.5rem;
 }
 
 .info-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-}
-
-.info-icon { font-size: 2rem; }
-
-.info-title {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.info-body {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.7;
-}
-
-.info-footer {
+  gap: 0.85rem;
   padding: 1.5rem;
 }
 
-.info-footer h3 {
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 0.75rem;
+.info-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
-.ref-list {
+.info-tag {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--accent);
+}
+
+.info-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.info-summary {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.info-bullet-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  padding: 0;
+  margin: 0;
+  flex: 1;
 }
 
-.ref-list li { font-size: 0.85rem; }
+.info-bullet-list li {
+  position: relative;
+  padding-left: 1rem;
+  font-size: 0.81rem;
+  color: var(--text-secondary);
+  line-height: 1.58;
+}
 
-.ref-list a {
+.info-bullet-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  top: 0;
   color: var(--accent);
-  font-weight: 600;
-  transition: opacity var(--transition);
+  font-weight: 800;
 }
 
-.ref-list a:hover { opacity: 0.75; }
+.info-formula {
+  margin-top: auto;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.info-formula code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ─── Daily Pipeline Banner ─────────────────────────── */
+.info-pipeline {
+  padding: 1.5rem;
+}
+
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.pipeline-step {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pipeline-time {
+  display: inline-block;
+  align-self: flex-start;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pipeline-stage {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pipeline-detail {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
 
 @media (max-width: 600px) {
-  .info-grid { grid-template-columns: 1fr; }
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
 }

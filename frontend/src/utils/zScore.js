@@ -1,8 +1,3 @@
-// Z-Score utilities for 9Cat Hoops Analyzer
-//
-// Z-scores are computed league-wide across all rostered players.
-// For TO (turnovers), a lower value is better, so z-score is inverted.
-
 export const CATEGORIES = [
   { key: 'PTS',  label: 'Points',          muKey: 'mu_pts',  varKey: 'var_pts',  icon: '', lowerBetter: false },
   { key: 'REB',  label: 'Rebounds',         muKey: 'mu_reb',  varKey: 'var_reb',  icon: '', lowerBetter: false },
@@ -15,8 +10,6 @@ export const CATEGORIES = [
   { key: 'TO',   label: 'Turnovers',        muKey: 'mu_tov',  varKey: 'var_tov',  icon: '', lowerBetter: true },
 ];
 
-// Resolve the active stats dictionary for a player based on statsSource ('ema' | 'weekly' | 'ros' | 'preseason').
-// Falls back cleanly if the selected projection table is empty or missing for that player.
 export function getPlayerStatsObject(player, statsSource = 'ema') {
   if (!player) return null;
   const hasStats = (s) => s && Object.keys(s).length > 0 && (s.mu_pts !== undefined || s.z_total !== undefined);
@@ -34,8 +27,6 @@ export function getPlayerStatsObject(player, statsSource = 'ema') {
   return player.ema_stats || null;
 }
 
-// Get the μ value for a player in a given category.
-// FG% and FT% are derived from their component mus.
 export function getPlayerMu(player, cat, statsSource = 'ema') {
   const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
@@ -48,9 +39,7 @@ export function getPlayerMu(player, cat, statsSource = 'ema') {
   return s[cat.muKey] ?? null;
 }
 
-// Get the variance for a player in a given category.
-// For derived stats (FG%, FT%) we approximate variance using
-// the delta method: Var(X/Y) ≈ (μx²/μy⁴)·Var(y) + (1/μy²)·Var(x)
+// Delta-method variance approximation for ratio stats: Var(X/Y) ~= (mu_x^2 / mu_y^4) * Var(y) + (1 / mu_y^2) * Var(x)
 export function getPlayerVar(player, cat, statsSource = 'ema') {
   const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
@@ -67,8 +56,6 @@ export function getPlayerVar(player, cat, statsSource = 'ema') {
   return s[cat.varKey] ?? null;
 }
 
-// Compute per-player μ values for all categories across the entire league roster.
-// Returns a map: { catKey → [ mu values of all players who have data ] }
 export function buildLeagueMuMap(allPlayers, statsSource = 'ema') {
   const map = {};
   for (const cat of CATEGORIES) {
@@ -104,7 +91,6 @@ export const DB_Z_KEYS = {
   TO: 'z_tov',
 };
 
-// Returns precomputed category z-score from active projection source or computes from league stats
 export function getPlayerZScore(player, cat, statsSource = 'ema', fallbackMean = 0, fallbackStd = 1) {
   const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
@@ -127,13 +113,10 @@ export function getPlayerTotalZ(player, statsSource = 'ema') {
   return player?.z_total ?? player?.ema_stats?.z_total ?? 0;
 }
 
-// Given a league's team list (from the API payload), compute z-scores for each
-// player on each category, then compute summed z-scores for ranking.
 export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => c.key), statsSource = 'ema') {
   const allPlayers = allTeams.flatMap(t => t.players);
   const leagueMuMap = buildLeagueMuMap(allPlayers, statsSource);
 
-  // Pre-compute league mean & std per cat
   const stats = {};
   for (const cat of CATEGORIES) {
     stats[cat.key] = {
@@ -142,7 +125,6 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
     };
   }
 
-  // Augment each player
   for (const team of allTeams) {
     for (const player of team.players) {
       const s = getPlayerStatsObject(player, statsSource);
@@ -180,8 +162,6 @@ export function computeLeagueZScores(allTeams, activeCats = CATEGORIES.map(c => 
   return allTeams;
 }
 
-// Rank players on a given team by their zSum (descending).
-// Returns player list with .rank property.
 export function rankPlayers(players) {
   const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
   const sorted = [...players]
@@ -191,9 +171,7 @@ export function rankPlayers(players) {
   return sorted.map((p, i) => ({ ...p, rank: i + 1 }));
 }
 
-// Compute team-level category μ for weekly projection.
-// Assumes projGames games in a week (default 3.5).
-// Returns: { [catKey]: { mu, ci95Low, ci95High, ci68Low, ci68High, fgMakes, fgAttempts, ftMakes, ftAttempts } }
+// Defaults to 3.5 games per week when schedule counts are omitted
 export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSource = 'ema') {
   const result = {};
   const irSet = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
@@ -201,7 +179,6 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
     p => !irSet.has(String(p?.selected_position || '').toUpperCase().trim())
   );
 
-  // Accumulate raw FGM/FGA and FTM/FTA across active players for percentage cats
   let totalFGM = 0, totalFGA = 0, totalFTM = 0, totalFTA = 0;
   let totalFGMVar = 0, totalFGAVar = 0, totalFTMVar = 0, totalFTAVar = 0;
 
@@ -226,14 +203,11 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
     let teamVar = 0;
 
     if (cat.derived === 'fg') {
-      // FG% = total FGM / total FGA (correct aggregation)
       teamMu = totalFGA > 0 ? totalFGM / totalFGA : 0;
-      // Delta-method variance approximation for ratio
       teamVar = totalFGA > 0
         ? (totalFGM ** 2 / totalFGA ** 4) * totalFGAVar + (1 / totalFGA ** 2) * totalFGMVar
         : 0;
     } else if (cat.derived === 'ft') {
-      // FT% = total FTM / total FTA
       teamMu = totalFTA > 0 ? totalFTM / totalFTA : 0;
       teamVar = totalFTA > 0
         ? (totalFTM ** 2 / totalFTA ** 4) * totalFTAVar + (1 / totalFTA ** 2) * totalFTMVar
@@ -257,7 +231,6 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
       ci95High: teamMu + 1.96 * sigma,
       ci68Low:  teamMu - sigma,
       ci68High: teamMu + sigma,
-      // Store raw components for FG%/FT% display
       ...(cat.derived === 'fg' ? { totalMakes: totalFGM, totalAttempts: totalFGA } : {}),
       ...(cat.derived === 'ft' ? { totalMakes: totalFTM, totalAttempts: totalFTA } : {}),
     };
@@ -266,7 +239,6 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
   return result;
 }
 
-// Get CSS class for a z-score value.
 export function zScoreClass(z) {
   if (z === null || isNaN(z)) return 'z-avg';
   if (z >  1.5) return 'z-elite';

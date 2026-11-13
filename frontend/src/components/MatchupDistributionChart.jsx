@@ -25,7 +25,6 @@ export default function MatchupDistributionChart({
   const mySigma = Math.max(my.sigma || 0, 1e-4);
   const oppSigma = Math.max(opp.sigma || 0, 1e-4);
 
-  // Compute stats and path data
   const {
     myFillPath,
     oppFillPath,
@@ -149,7 +148,6 @@ export default function MatchupDistributionChart({
         </div>
       </div>
 
-      {/* Head-to-Head Summary Strip */}
       <div className="dist-stats-strip">
         <div className="dist-stat-box you">
           <div className="dsb-header">
@@ -202,7 +200,6 @@ export default function MatchupDistributionChart({
             </linearGradient>
           </defs>
 
-          {/* Grid vertical lines */}
           {xTicks.map((t, idx) => (
             <g key={idx}>
               <line
@@ -223,11 +220,9 @@ export default function MatchupDistributionChart({
             </g>
           ))}
 
-          {/* Curves */}
           <path d={oppFillPath} className="curve-path-opp" />
           <path d={myFillPath} className="curve-path-my" />
 
-          {/* Mean indicators */}
           <line
             x1={oppMuX}
             y1={padding.top - 8}
@@ -260,7 +255,6 @@ export default function MatchupDistributionChart({
             You μ ({formatMu(my.mu, category.key)})
           </text>
 
-          {/* Bottom X-axis line */}
           <line
             x1={padding.left}
             y1={height - padding.bottom}

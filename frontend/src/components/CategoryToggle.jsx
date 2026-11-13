@@ -1,14 +1,6 @@
 import { CATEGORIES } from '../utils/zScore.js';
 import './CategoryToggle.css';
 
-/**
- * Category toggle chip bar for punt strategy.
- *
- * Props:
- *   puntedCats: Set<string>   — currently punted category keys
- *   onToggle: (key) => void   — toggle a category
- *   label?: string
- */
 export default function CategoryToggle({ puntedCats, onToggle, label = 'Toggle Categories' }) {
   return (
     <div className="cat-toggle-section">

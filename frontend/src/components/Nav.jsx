@@ -1,6 +1,7 @@
-import { useContext, useState } from 'react';
+import { useContext } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
+import YahooRefreshButton from './common/YahooRefreshButton.jsx';
 import './Nav.css';
 
 const LINKS = [
@@ -17,20 +18,7 @@ const LINKS = [
 export default function Nav() {
   const navigate = useNavigate();
   const { leagueData, fantasyLink, refreshTeam, loading } = useContext(TeamDataContext) || {};
-  const [justRefreshed, setJustRefreshed] = useState(false);
-
   const canRefresh = Boolean(leagueData || fantasyLink);
-
-  const handleRefresh = async () => {
-    if (loading || !refreshTeam) return;
-    try {
-      await refreshTeam();
-      setJustRefreshed(true);
-      setTimeout(() => setJustRefreshed(false), 2500);
-    } catch (err) {
-      console.error('Refresh failed:', err);
-    }
-  };
 
   return (
     <nav className="nav" aria-label="Main navigation">
@@ -61,18 +49,13 @@ export default function Nav() {
 
       <div className="nav-actions">
         {canRefresh && (
-          <button
-            type="button"
-            className={`nav-refresh-btn ${loading ? 'loading' : ''} ${justRefreshed ? 'success' : ''}`}
-            onClick={handleRefresh}
-            disabled={loading}
-            title="Reload latest team roster, matchups, and league data from Yahoo Fantasy"
-          >
-            <span className={`refresh-icon ${loading ? 'spinning' : ''}`}>🔄</span>
-            <span className="nav-refresh-label">
-              {loading ? 'Reloading…' : justRefreshed ? 'Updated!' : 'Reload Yahoo'}
-            </span>
-          </button>
+          <YahooRefreshButton
+            loading={loading}
+            onRefresh={refreshTeam}
+            className="nav-refresh-btn"
+            idleLabel="Reload Yahoo"
+            labelClassName="nav-refresh-label"
+          />
         )}
       </div>
     </nav>

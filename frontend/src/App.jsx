@@ -35,8 +35,7 @@ export default function App() {
             <Route path="/draft"           element={<DraftPage />} />
             <Route path="/trade"           element={<TradePage />} />
             <Route path="/info"            element={<InfoPage />} />
-            {/* Catch-all */}
-            <Route path="*" element={<HomePage />} />
+            <Route path="*"                element={<HomePage />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

@@ -4,28 +4,17 @@ import { formatMu, formatCI, ordinal } from '../utils/formatters.js';
 import { zScoreClass } from '../utils/zScore.js';
 import './WeeklyProjection.css';
 
-/**
- * Weekly projection panel — shows team-level μ and CI for each category
- * assuming a hypothetical game week.
- * FG%/FT% use total makes / total attempts aggregation.
- *
- * Props:
- *   players:     Player[]   — team roster
- *   leagueTeams: Team[]     — all league teams (for league rank coloring)
- *   projGames:   number     — default 3.5
- */
 export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5, statsSource = 'ema' }) {
-  const [ciMode, setCiMode] = useState('95'); // '95' | '68'
+  const [ciMode, setCiMode] = useState('95');
   const [pgInput, setPgInput] = useState(String(projGames));
   const [pg, setPg] = useState(projGames);
-  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'bars'
+  const [viewMode, setViewMode] = useState('cards');
 
   const proj = useMemo(
     () => computeTeamWeeklyProjection(players ?? [], pg, statsSource),
     [players, pg, statsSource]
   );
 
-  // Project every league team and rank by projected category μ
   const leagueProjs = useMemo(() => {
     if (!leagueTeams) return [];
     return leagueTeams.map(t => computeTeamWeeklyProjection(t.players ?? [], pg, statsSource));
@@ -47,9 +36,8 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
     if (!isNaN(val) && val > 0 && val <= 7) setPg(val);
   };
 
-  // Map rank to a z-like value for coloring
   const rankZ = (rank) =>
-    (totalTeams - rank) / (totalTeams - 1) * 3 - 1.5;
+    ((totalTeams - rank) / (totalTeams - 1)) * 3 - 1.5;
 
   return (
     <div className="weekly-proj-panel card fade-up">
@@ -132,7 +120,6 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
             const rank = getLeagueRank(cat.key);
             const rZ = rankZ(rank);
 
-            // Percentage fill: rank 1 = 100%, last = 0%
             const fillPct = rank !== null ? ((totalTeams - rank) / (totalTeams - 1)) * 100 : 50;
             const barColor = rZ > 1.5 ? 'var(--z-elite)'
               : rZ > 0.5 ? 'var(--z-good)'
@@ -140,7 +127,6 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
                   : rZ > -1.5 ? 'var(--z-poor)'
                     : 'var(--z-bad)';
 
-            // CI as fraction of value for display
             const ciHalfWidth = (high - low) / 2;
             const ciPctOfMu = mu > 0 ? Math.min((ciHalfWidth / Math.abs(mu)) * 100, 40) : 20;
 
@@ -159,12 +145,10 @@ export default function WeeklyProjection({ players, leagueTeams, projGames = 3.5
                   </span>
                 </div>
                 <div className="proj-bar-track">
-                  {/* Main fill bar */}
                   <div
                     className="proj-bar-fill"
                     style={{ width: `${fillPct}%`, background: barColor }}
                   />
-                  {/* Error bar — shows as a lighter overlay centered on fill */}
                   <div
                     className="proj-error-range"
                     style={{

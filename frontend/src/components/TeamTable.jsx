@@ -10,19 +10,10 @@ import {
   zScoreBgClass
 } from '../utils/zScore.js';
 import { formatMu, formatZ, formatDelta } from '../utils/formatters.js';
+import SortIcon from './common/SortIcon.jsx';
 import './TeamTable.css';
 
-/**
- * Sortable, color-coded player table with z-scores, rank, and rank delta.
- *
- * Props:
- *   players:     Player[]  — already enriched with .zScores, .zSum
- *   puntedCats:  Set<string>
- *   allTeams:    Team[]    — full league for z-score recompute on punt
- *   baselinePlayers: Player[] — players ranked without punt (for delta)
- *   statsSource: 'ema' | 'weekly' | 'ros' — active projection source
- */
-export default function TeamTable({ players, puntedCats, allTeams, baselinePlayers, statsSource = 'ema' }) {
+export default function TeamTable({ players, puntedCats, allTeams, statsSource = 'ema' }) {
   const [sortKey, setSortKey] = useState('rank');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -31,13 +22,11 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
     [puntedCats]
   );
 
-  // 1. Dynamic league-wide ranking & baseline calculation
   const { rankedPlayers, baselineRankMap, catStats } = useMemo(() => {
     if (!players || players.length === 0) {
       return { rankedPlayers: [], baselineRankMap: {}, catStats: {} };
     }
 
-    // Collect all unique rostered players across the entire league
     const leaguePlayers = (() => {
       if (!allTeams || allTeams.length === 0) return players;
       const map = new Map();
@@ -53,7 +42,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       return map.size > 0 ? Array.from(map.values()) : players;
     })();
 
-    // Compute league-wide category stats for the selected statsSource
     const leagueMuMap = buildLeagueMuMap(leaguePlayers, statsSource);
     const computedCatStats = {};
     for (const cat of CATEGORIES) {
@@ -63,7 +51,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       computedCatStats[cat.key] = { mean: m, std: Math.sqrt(variance) || 1 };
     }
 
-    // Helper: calculate Z-score sum across specified categories for a player given statsSource
     const getZForCats = (p, cats) => {
       if (cats.length === CATEGORIES.length) {
         const rawZ = getPlayerTotalZ(p, statsSource);
@@ -75,7 +62,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       }, 0);
     };
 
-    // 2. Baseline League Ranking (all 9 categories active)
     const baselineSorted = [...leaguePlayers].sort((a, b) => {
       const bZ = getZForCats(b, CATEGORIES);
       const aZ = getZForCats(a, CATEGORIES);
@@ -88,7 +74,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       bMap[p.name] = idx + 1;
     });
 
-    // 3. Current League Ranking (with activeCats / punts applied)
     const currentSorted = [...leaguePlayers].sort((a, b) => {
       const bZ = getZForCats(b, activeCats);
       const aZ = getZForCats(a, activeCats);
@@ -103,13 +88,12 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       cZSumMap[p.name] = getZForCats(p, activeCats);
     });
 
-    // 4. Augment YOUR team's players with their league rank & delta
     const teamRanked = players.map(p => {
       const s = getPlayerStatsObject(p, statsSource);
       const leagueRank = cMap[p.name] ?? (s?.rank || p.rank || 999);
       const baseRank = bMap[p.name] ?? leagueRank;
       const zSum = cZSumMap[p.name] ?? getZForCats(p, activeCats);
-      const delta = baseRank - leagueRank; // e.g. base #20, now #12 => delta +8 (improved!)
+      const delta = baseRank - leagueRank;
       return {
         ...p,
         rank: leagueRank,
@@ -122,7 +106,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
     return { rankedPlayers: teamRanked, baselineRankMap: bMap, catStats: computedCatStats };
   }, [players, allTeams, activeCats, statsSource]);
 
-  // Sort
   const sorted = useMemo(() => {
     return [...rankedPlayers].sort((a, b) => {
       let av, bv;
@@ -144,7 +127,6 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
       }
       else if (sortKey === 'zscore') { av = a.zSum; bv = b.zSum; }
       else {
-        // category mu
         const cat = CATEGORIES.find(c => c.key === sortKey);
         av = cat ? (getPlayerMu(a, cat, statsSource) ?? -999) : 0;
         bv = cat ? (getPlayerMu(b, cat, statsSource) ?? -999) : 0;
@@ -159,18 +141,13 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
     else { setSortKey(key); setSortDir(key === 'name' || key === 'rank' ? 'asc' : 'desc'); }
   };
 
-  const SortIcon = ({ col }) => {
-    if (sortKey !== col) return <span className="sort-icon">⇅</span>;
-    return <span className="sort-icon active">{sortDir === 'asc' ? '↑' : '↓'}</span>;
-  };
-
   const Th = ({ col, label, title }) => (
     <th
       className={sortKey === col ? 'sort-active' : ''}
       onClick={() => handleSort(col)}
       title={title || `Sort by ${label}`}
     >
-      {label} <SortIcon col={col} />
+      {label} <SortIcon active={sortKey === col} dir={sortDir} />
     </th>
   );
 
@@ -185,7 +162,7 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
               style={{ textAlign: 'center', whiteSpace: 'nowrap' }}
               title="League Rank (dynamically calculated across all rostered players in the league)"
             >
-              # League <SortIcon col="rank" />
+              # League <SortIcon active={sortKey === 'rank'} dir={sortDir} />
             </th>
             <Th col="name" label="Player" />
             <th>Pos</th>
@@ -199,7 +176,7 @@ export default function TeamTable({ players, puntedCats, allTeams, baselinePlaye
                 onClick={() => handleSort(cat.key)}
                 title={`${cat.label} — click to sort`}
               >
-                {cat.key} <SortIcon col={cat.key} />
+                {cat.key} <SortIcon active={sortKey === cat.key} dir={sortDir} />
               </th>
             ))}
             <Th col="zscore" label="ΣZ" />

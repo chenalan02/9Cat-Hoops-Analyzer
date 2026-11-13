@@ -28,9 +28,6 @@ export function isActiveSlot(p) {
   return !IR_SET.has(String(p?.selected_position || '').toUpperCase().trim());
 }
 
-// ─── Positional eligibility & slot coverage ────────────────
-
-/** Parse a player's eligible positions into normalized uppercase tokens (e.g. ['PG', 'SG']). */
 export function parsePositions(player) {
   const raw = player?.positions;
   let tokens = [];
@@ -213,8 +210,6 @@ export function comparePositionImpact(beforePlayers, afterPlayers, rosterPositio
   return warnings;
 }
 
-// ─── Math helpers ──────────────────────────────────────────
-
 // Abramowitz–Stegun 7.1.26 (max abs error ≈ 1.5e-7)
 function erf(x) {
   const sign = x < 0 ? -1 : 1;
@@ -232,8 +227,6 @@ const num = v => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-
-// ─── Contribution vectors ──────────────────────────────────
 
 function emptyTotals() {
   const t = {};
@@ -343,12 +336,6 @@ export function categoryRanks(teamId, distById) {
   return ranks;
 }
 
-// ─── Free agent replacement level ──────────────────────────
-
-/**
- * Builds a synthetic replacement-level player from the bottom of the rostered pool
- * when live waiver wire data is unavailable.
- */
 export function buildReplacementPlayer(allPlayers, source, valueFn, streamingBonus = 0) {
   const pool = allPlayers.filter(p => isActiveSlot(p) && playerContribution(p, source));
   const sorted = [...pool].sort((a, b) => valueFn(a) - valueFn(b));
@@ -389,8 +376,6 @@ export function buildReplacementPlayer(allPlayers, source, valueFn, streamingBon
     weekly_stats: stats,
   };
 }
-
-// ─── Player value tables (punt-aware Z + ranks) ────────────
 
 function mean(a) { return a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0; }
 function std(a) {
@@ -498,15 +483,6 @@ function selectWaiverReplacement({ freeAgents, allPlayers, ownerByName, source, 
   };
 }
 
-// ─── Trade context ─────────────────────────────────────────
-
-/**
- * Precomputes everything needed to evaluate many hypothetical trades quickly.
- * @param {Array} leagueTeams
- * @param {string} source - 'ros' | 'ema' | 'weekly'
- * @param {Set<string>} activeCats - user's active (non-punted) categories
- * @param {object} [options] - { freeAgents, rosterPositions, streamingBonus }
- */
 export function buildTradeContext(leagueTeams, source, activeCats, options = {}) {
   const { freeAgents = [], rosterPositions = [], streamingBonus = 0 } = options;
   const allPlayers = leagueTeams.flatMap(t => t.players);
@@ -771,13 +747,8 @@ function quickPackageSwap(ctx, myTeamId, outgoing, incoming, partnerId, partnerC
   };
 }
 
-// ─── Suggestions ───────────────────────────────────────────
-
-/**
- * Ranks my active players by genuine punt mismatch and saturated-category waste
- * relative to their market value, protecting un-punted top-15 cornerstones from
- * being falsely flagged by within-roster ordinal distortions.
- */
+// Ranks my active players by punt mismatch and saturated-category waste relative to market value,
+// protecting un-punted top-15 cornerstones from within-roster ordinal distortions.
 export function computeSellCandidates(ctx, myTeamId) {
   const team = ctx.teamById.get(myTeamId);
   const roster = team.players.filter(p => isActiveSlot(p) && ctx.contrib.get(p.name));

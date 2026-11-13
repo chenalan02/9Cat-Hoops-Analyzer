@@ -2,7 +2,6 @@ import { useState, useRef, useMemo } from 'react';
 import { CATEGORIES } from '../utils/zScore.js';
 import './TeamZScoreChart.css';
 
-// Helper to determine CSS classes for player z-scores in the tooltip
 function getZTagClass(z) {
   if (z === null || isNaN(z)) return 'z-tag-avg';
   if (z > 1.5) return 'z-tag-elite';
@@ -17,10 +16,8 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const containerRef = useRef(null);
 
-  // Compute category averages and standard deviations
   const chartData = useMemo(() => {
     return CATEGORIES.map(cat => {
-      // Get all active player z-scores for this category
       const playerScores = activePlayers
         .map(p => ({
           name: p.name,
@@ -39,7 +36,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
         stdDev = Math.sqrt(variance);
       }
 
-      // Sort players by z-score descending for tooltip display
       const sortedPlayers = [...playerScores].sort((a, b) => b.z - a.z);
 
       return {
@@ -54,7 +50,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
     });
   }, [activePlayers]);
 
-  // Dimensions for SVG
   const width = 800;
   const height = 350;
   const padding = { top: 25, right: 30, bottom: 45, left: 45 };
@@ -62,7 +57,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  // Scale variables: Z-score range from -3.5 to +3.5
   const zMin = -3.5;
   const zMax = 3.5;
 
@@ -75,7 +69,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
   const colWidth = plotWidth / CATEGORIES.length;
   const barWidth = 32;
 
-  // Handle tooltip tracking
   const handleMouseMove = (e, catData) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -89,7 +82,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
     setHoveredCat(null);
   };
 
-  // Generate grid values for z-score lines
   const gridLines = [-3, -2, -1, 0, 1, 2, 3];
 
   return (
@@ -118,7 +110,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
       <div className="chart-wrapper">
         <svg viewBox={`0 0 ${width} ${height}`} className="chart-svg">
           <defs>
-            {/* Gradients */}
             <linearGradient id="posBarGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#10b981" stopOpacity="0.85" />
               <stop offset="100%" stopColor="#059669" stopOpacity="0.85" />
@@ -137,7 +128,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
             </linearGradient>
           </defs>
 
-          {/* Grid lines */}
           {gridLines.map(z => (
             <g key={z}>
               <line
@@ -158,18 +148,15 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
             </g>
           ))}
 
-          {/* Render Bars and Error Bars */}
           {chartData.map((d, i) => {
             const xCenter = padding.left + i * colWidth + colWidth / 2;
             const yZero = getY(0);
             const yMean = getY(d.mean);
 
-            // Bar dimensions
             const barX = xCenter - barWidth / 2;
             const barY = d.mean >= 0 ? yMean : yZero;
-            const barH = Math.max(Math.abs(yMean - yZero), 2); // At least 2px height for visual feedback
+            const barH = Math.max(Math.abs(yMean - yZero), 2);
 
-            // Error Bar positions
             const yErrTop = getY(d.mean + d.stdDev);
             const yErrBottom = getY(d.mean - d.stdDev);
             const capWidth = 10;
@@ -178,7 +165,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
 
             return (
               <g key={d.key}>
-                {/* Mean Bar */}
                 <rect
                   x={barX}
                   y={barY}
@@ -192,7 +178,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
                   className="chart-bar"
                 />
 
-                {/* Error Bar Line */}
                 {d.stdDev > 0 && (
                   <g>
                     <line
@@ -202,7 +187,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
                       y2={yErrTop}
                       className="error-bar-line"
                     />
-                    {/* Top Cap */}
                     <line
                       x1={xCenter - capWidth / 2}
                       y1={yErrTop}
@@ -210,7 +194,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
                       y2={yErrTop}
                       className="error-bar-cap"
                     />
-                    {/* Bottom Cap */}
                     <line
                       x1={xCenter - capWidth / 2}
                       y1={yErrBottom}
@@ -221,7 +204,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
                   </g>
                 )}
 
-                {/* Category Icon & Label under columns */}
                 <text
                   x={xCenter}
                   y={height - padding.bottom + 20}
@@ -230,7 +212,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
                   {d.icon} {d.key}
                 </text>
 
-                {/* Invisible hover trigger zone for full column */}
                 <rect
                   x={padding.left + i * colWidth}
                   y={padding.top}
@@ -246,7 +227,6 @@ export default function TeamZScoreChart({ activePlayers = [] }) {
         </svg>
       </div>
 
-      {/* Hover Tooltip */}
       {hoveredCat && (
         <div
           className="chart-tooltip"
