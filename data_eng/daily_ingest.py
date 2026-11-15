@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     current_season = get_current_season()
     dt = datetime.now()
-    dt_from = dt - timedelta(days=1)
+    dt_from = dt - timedelta(days=7)
 
     extract_json = leaguegamelog.LeagueGameLog(
         player_or_team_abbreviation='P', # 'P' for Player stats
