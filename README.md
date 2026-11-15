@@ -2,6 +2,8 @@
 
 A full-stack analytics workbench for Yahoo Fantasy Basketball 9-category head-to-head leagues that combines live Yahoo league data with NBA player projections stored in Databricks. Instead of evaluating rosters on raw per-game averages, it models punt builds, daily active-slot constraints, remaining NBA schedules, and category variance to quantify how draft picks, waiver streamers, and trades change weekly win probabilities.
 
+Try it now at [9cathoops.app](https://9cathoops.app)
+
 ## Tech Stack
 
 - **Backend:** Python 3.13, FastAPI, Pydantic v2, Uvicorn, APScheduler, `yfpy` (Yahoo Fantasy Sports API), SciPy (`linear_sum_assignment` bipartite lineup solver), NumPy, Pandas, `databricks-sql-connector`
