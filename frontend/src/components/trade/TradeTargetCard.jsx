@@ -1,5 +1,5 @@
 import { CATEGORIES } from '../../utils/zScore.js';
-import { getMarketRank } from '../../utils/tradeEngine.js';
+import { getMarketRank, getYahooRank } from '../../utils/tradeEngine.js';
 import { signed, fmtCatDelta } from './tradeFormatters.js';
 
 const FORMAT_LABELS = {
@@ -35,10 +35,16 @@ export default function TradeTargetCard({ t, ctx, puntedCats, onLoad }) {
             <span className="tc-label">Give</span>
             {gives.map(p => {
               const r = getMarketRank(ctx, p.name);
+              const yr = getYahooRank(ctx, p.name);
               return (
                 <div key={p.name} className="tc-player-item">
                   <span className="tc-name" title={p.name}>{p.name}</span>
-                  <span className="tc-meta">#{r ?? '—'} · {p.nba_team} · {p.positions}</span>
+                  <span
+                    className="tc-meta"
+                    title={`Model rank #${r ?? '—'}${yr.rank != null ? ` · Yahoo Season #${yr.rank}` : ''}${yr.orank != null ? ` · Yahoo O-Rank #${yr.orank}` : ''}`}
+                  >
+                    #{r ?? '—'}{yr.effective != null ? ` · Y! #${yr.effective}` : ''} · {p.nba_team} · {p.positions}
+                  </span>
                 </div>
               );
             })}
@@ -48,13 +54,19 @@ export default function TradeTargetCard({ t, ctx, puntedCats, onLoad }) {
             <span className="tc-label">Get</span>
             {gets.map(p => {
               const r = getMarketRank(ctx, p.name);
+              const yr = getYahooRank(ctx, p.name);
               return (
                 <div key={p.name} className="tc-player-item">
                   <span className="tc-name" title={p.name}>
                     {p.name}
                     {p.status && <span className="sp-status-tag">{p.status}</span>}
                   </span>
-                  <span className="tc-meta">#{r ?? '—'} · {p.nba_team} · {p.positions}</span>
+                  <span
+                    className="tc-meta"
+                    title={`Model rank #${r ?? '—'}${yr.rank != null ? ` · Yahoo Season #${yr.rank}` : ''}${yr.orank != null ? ` · Yahoo O-Rank #${yr.orank}` : ''}`}
+                  >
+                    #{r ?? '—'}{yr.effective != null ? ` · Y! #${yr.effective}` : ''} · {p.nba_team} · {p.positions}
+                  </span>
                 </div>
               );
             })}
@@ -71,8 +83,16 @@ export default function TradeTargetCard({ t, ctx, puntedCats, onLoad }) {
         <span className={`tc-badge ${t.winWin ? 'good' : 'bad'}`} title="Change in the partner's expected 9-cat category wins">
           {t.winWin ? '🤝 Win-win' : 'Partner 9-cat'} {signed(t.partnerDelta)}
         </span>
-        <span className={`tc-badge ${t.fairness === 'Fair value' ? 'neutral' : t.fairness === 'Reach' ? 'warn' : 'info'}`} title="Market value comparison">
-          {t.fairness}{t.type === '1for1' && t.rankGap !== 0 ? ` (${t.rankGap > 0 ? '+' : ''}${t.rankGap} ranks)` : ''}
+        {t.yahooFairness && (
+          <span
+            className={`tc-badge ${t.yahooFairness.cls}`}
+            title={`Perceived fairness on Yahoo rankings (${t.yahooFairness.detail})`}
+          >
+            {t.yahooFairness.label}
+          </span>
+        )}
+        <span className={`tc-badge ${t.fairness === 'Fair value' ? 'neutral' : t.fairness === 'Reach' ? 'warn' : 'info'}`} title="Projection model Z-score / rank value comparison">
+          Model: {t.fairness === 'Fair value' ? 'Fair' : t.fairness}{t.type === '1for1' && t.rankGap !== 0 ? ` (${t.rankGap > 0 ? '+' : ''}${t.rankGap} ranks)` : ''}
         </span>
       </div>
 

@@ -73,6 +73,8 @@ def get_top_free_agents(
             "selected_position": "FA",
             "status": status,
             "rank": rank_val,
+            "yahoo_rank": fa_entry.get("yahoo_rank") if isinstance(fa_entry, dict) else None,
+            "yahoo_orank": fa_entry.get("yahoo_orank") if isinstance(fa_entry, dict) else None,
             "z_total": round(float(z_num), 4) if z_num > -99.0 else None,
             "ros_stats": ros_d,
             "ema_stats": ema_d,

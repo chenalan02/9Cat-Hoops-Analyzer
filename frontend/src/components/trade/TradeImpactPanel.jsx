@@ -1,6 +1,6 @@
 import { CATEGORIES } from '../../utils/zScore.js';
 import { formatZ } from '../../utils/formatters.js';
-import { PROJ_GAMES, isActiveSlot } from '../../utils/tradeEngine.js';
+import { PROJ_GAMES, isActiveSlot, computeYahooFairness } from '../../utils/tradeEngine.js';
 import { signed, verdictFor, partnerVerdict } from './tradeFormatters.js';
 import AssetExchangeGrid from './AssetExchangeGrid.jsx';
 import CatBar from './CatBar.jsx';
@@ -37,6 +37,7 @@ export default function TradeImpactPanel({
   const topGains = pCatChanges.filter(x => x.d >= 0.008).sort((a, b) => b.d - a.d).slice(0, 2);
   const topLosses = pCatChanges.filter(x => x.d <= -0.008).sort((a, b) => a.d - b.d).slice(0, 2);
   const partnerVerdictMeta = evaluation?.partner ? partnerVerdict(evaluation.partner.delta) : null;
+  const yahooFairness = evaluation ? computeYahooFairness(ctx, outList, inList) : null;
 
   return (
     <div className="trade-impact">
@@ -141,6 +142,15 @@ export default function TradeImpactPanel({
             <div className="partner-card-right">
               <span className={`partner-delta ${evaluation.partner.delta >= 0 ? 'z-elite' : 'z-bad'}`}>{signed(evaluation.partner.delta)}</span>
               <span className={`partner-verdict ${partnerVerdictMeta.cls}`}>{partnerVerdictMeta.text}</span>
+              {yahooFairness && (
+                <span
+                  className={`tc-badge ${yahooFairness.cls}`}
+                  style={{ marginTop: '0.35rem', alignSelf: 'flex-end' }}
+                  title={`Perceived fairness using Yahoo rankings (${yahooFairness.detail})`}
+                >
+                  {yahooFairness.label} · {yahooFairness.detail}
+                </span>
+              )}
             </div>
           </div>
           <div className="partner-punt-bar">
@@ -199,9 +209,26 @@ export default function TradeImpactPanel({
         ) : (
           <div className="cat-bar-list">
             <div className="cat-legend-bar">
-              <span className="legend-dot before" /> Current roster &nbsp;
-              <span className="legend-dot after" /> After trade
-              <span className="cat-legend-note">Weekly totals assume {PROJ_GAMES} games per active player</span>
+              <span className="legend-dot before" /> Current win %
+              {evaluation && (
+                <>
+                  &nbsp; <span className="legend-dot after" /> Gain
+                  &nbsp; <span className="legend-dot loss" /> Drop
+                </>
+              )}
+              <span className="cat-legend-note">
+                Tick = 50% league avg · Weekly totals assume {PROJ_GAMES} gm/wk
+              </span>
+            </div>
+            <div className="cir-header">
+              <span>Cat</span>
+              <span className="cir-header-scale">
+                <span>0%</span>
+                <span>Win Chance (50%)</span>
+                <span>100%</span>
+              </span>
+              <span>Odds & Rank</span>
+              <span style={{ textAlign: 'right' }}>Weekly Proj</span>
             </div>
             {CATEGORIES.map(cat => (
               <CatBar

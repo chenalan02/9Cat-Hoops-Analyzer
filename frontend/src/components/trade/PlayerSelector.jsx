@@ -1,10 +1,21 @@
 import { useState, useMemo } from 'react';
 import { zScoreClass } from '../../utils/zScore.js';
 import { formatZ } from '../../utils/formatters.js';
-import { isActiveSlot, playerHasPosition, getMarketRank } from '../../utils/tradeEngine.js';
+import { isActiveSlot, playerHasPosition, getMarketRank, getYahooRank } from '../../utils/tradeEngine.js';
 import { POS_FILTERS } from './tradeFormatters.js';
 
-export default function PlayerSelector({ label, badge, badgeClass, players, selected, onToggle, ctx, teamOptions = null }) {
+export default function PlayerSelector({
+  label,
+  badge,
+  badgeClass,
+  players,
+  selected,
+  onToggle,
+  ctx,
+  teamOptions = null,
+  includeFreeAgents = false,
+  faLoading = false,
+}) {
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
   const [posFilter, setPosFilter] = useState('all');
@@ -12,11 +23,15 @@ export default function PlayerSelector({ label, badge, badgeClass, players, sele
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const list = players.filter(p =>
-      p.name.toLowerCase().includes(q) &&
-      (teamFilter === 'all' || String(ctx.ownerByName.get(p.name)) === teamFilter) &&
-      playerHasPosition(p, posFilter)
-    );
+    const list = players.filter(p => {
+      if (!p.name.toLowerCase().includes(q)) return false;
+      if (teamFilter === '__FA__') {
+        if (ctx.ownerByName.has(p.name)) return false;
+      } else if (teamFilter !== 'all' && String(ctx.ownerByName.get(p.name)) !== teamFilter) {
+        return false;
+      }
+      return playerHasPosition(p, posFilter);
+    });
     if (sortBy === 'rank') {
       return [...list].sort((a, b) => (getMarketRank(ctx, a.name) ?? 999) - (getMarketRank(ctx, b.name) ?? 999));
     }
@@ -46,7 +61,10 @@ export default function PlayerSelector({ label, badge, badgeClass, players, sele
         />
         {teamOptions && (
           <select className="selector-team-filter" value={teamFilter} onChange={e => setTeamFilter(e.target.value)}>
-            <option value="all">All teams</option>
+            <option value="all">{includeFreeAgents ? 'All teams & FAs' : 'All teams'}</option>
+            {includeFreeAgents && (
+              <option value="__FA__">Free Agents</option>
+            )}
             {teamOptions.map(t => (
               <option key={t.team_id} value={String(t.team_id)}>{t.name}</option>
             ))}
@@ -70,7 +88,10 @@ export default function PlayerSelector({ label, badge, badgeClass, players, sele
           const isSelected = selected.has(p.name);
           const z = ctx.puntValue(p);
           const rank = getMarketRank(ctx, p.name);
-          const ownerName = teamOptions ? ctx.teamById.get(ctx.ownerByName.get(p.name))?.name : null;
+          const yr = getYahooRank(ctx, p.name);
+          const ownerId = ctx.ownerByName.get(p.name);
+          const isFa = ownerId == null;
+          const ownerName = teamOptions ? (isFa ? 'Free Agent' : ctx.teamById.get(ownerId)?.name) : null;
           const onIl = !isActiveSlot(p);
           return (
             <button
@@ -81,11 +102,12 @@ export default function PlayerSelector({ label, badge, badgeClass, players, sele
               <div className="sp-info">
                 <span className="sp-name">
                   {p.name}
+                  {teamOptions && isFa && <span className="sp-fa-tag">FA</span>}
                   {onIl && <span className="sp-il-tag">IL</span>}
                   {p.status && !onIl && <span className="sp-status-tag">{p.status}</span>}
                 </span>
                 <span className="sp-meta">
-                  {p.nba_team} · {p.positions}{ownerName ? ` · ${ownerName}` : ''}
+                  {p.nba_team} · {p.positions}{yr.effective != null ? ` · Y! #${yr.effective}` : ''}{ownerName ? ` · ${ownerName}` : ''}
                 </span>
               </div>
               <div className="sp-right">
@@ -98,7 +120,11 @@ export default function PlayerSelector({ label, badge, badgeClass, players, sele
             </button>
           );
         })}
-        {filtered.length === 0 && <p className="selector-empty">No players found</p>}
+        {filtered.length === 0 && (
+          <p className="selector-empty">
+            {teamFilter === '__FA__' && faLoading ? 'Loading free agents…' : 'No players found'}
+          </p>
+        )}
       </div>
       {selected.size > 0 && (
         <div className="selector-chips">

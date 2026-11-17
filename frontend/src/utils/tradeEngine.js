@@ -518,8 +518,15 @@ export function buildTradeContext(leagueTeams, source, activeCats, options = {})
     distById.set(t.team_id, distFromTotals(totals));
   }
 
+  const validFreeAgents = (freeAgents || []).filter(p => p?.name && !ownerByName.has(p.name));
+  const freeAgentSet = new Set(validFreeAgents.map(p => p.name));
+  for (const fa of validFreeAgents) {
+    if (!zTable.has(fa.name)) zTable.set(fa.name, computePlayerZRow(fa, source, fallback));
+    if (!contrib.has(fa.name)) contrib.set(fa.name, playerContribution(fa, source));
+  }
+
   const { replacement, replacementBaseContrib, replacementContrib } = selectWaiverReplacement({
-    freeAgents,
+    freeAgents: validFreeAgents,
     allPlayers,
     ownerByName,
     source,
@@ -539,11 +546,23 @@ export function buildTradeContext(leagueTeams, source, activeCats, options = {})
   const puntRank = new Map(byPunt.map((p, i) => [p.name, i + 1]));
 
   const marketRank = new Map();
-  for (const p of allPlayers) {
-    const s = getPlayerStatsObject(p, source);
-    const rawR = s?.rank != null ? s.rank : p?.rank;
-    const r = Number(rawR);
-    marketRank.set(p.name, Number.isFinite(r) && r > 0 && r < 999 ? r : null);
+  const yahooRank = new Map();
+  const yahooORank = new Map();
+  for (const p of [...allPlayers, ...validFreeAgents]) {
+    if (!marketRank.has(p.name)) {
+      const s = getPlayerStatsObject(p, source);
+      const rawR = s?.rank != null ? s.rank : p?.rank;
+      const r = Number(rawR);
+      marketRank.set(p.name, Number.isFinite(r) && r > 0 && r < 999 ? r : null);
+    }
+    if (!yahooRank.has(p.name)) {
+      const yr = Number(p?.yahoo_rank);
+      yahooRank.set(p.name, Number.isFinite(yr) && yr > 0 ? yr : null);
+    }
+    if (!yahooORank.has(p.name)) {
+      const yor = Number(p?.yahoo_orank);
+      yahooORank.set(p.name, Number.isFinite(yor) && yor > 0 ? yor : null);
+    }
   }
 
   const baseWins = new Map();
@@ -559,7 +578,8 @@ export function buildTradeContext(leagueTeams, source, activeCats, options = {})
     activeCats,
     activeList,
     allPlayers,
-    freeAgents,
+    freeAgents: validFreeAgents,
+    freeAgentSet,
     rosterPositions,
     streamingBonus: Math.max(0, Number(streamingBonus) || 0),
     zTable,
@@ -578,12 +598,67 @@ export function buildTradeContext(leagueTeams, source, activeCats, options = {})
     leagueRank,
     puntRank,
     marketRank,
+    yahooRank,
+    yahooORank,
   };
 }
 
 /** Global market rank (Databricks) with league Z-rank fallback. */
 export function getMarketRank(ctx, name) {
   return ctx.marketRank.get(name) ?? ctx.leagueRank.get(name) ?? null;
+}
+
+/** Yahoo Fantasy rank (current season rank with O-Rank fallback) for perceived fairness. */
+export function getYahooRank(ctx, name) {
+  const rank = ctx?.yahooRank?.get(name) ?? null;
+  const orank = ctx?.yahooORank?.get(name) ?? null;
+  return { rank, orank, effective: rank ?? orank ?? null };
+}
+
+function yahooRankScore(rank) {
+  const r = Math.max(1, Math.min(Number(rank) || 200, 300));
+  return 12 / (Math.sqrt(r) + 1);
+}
+
+/**
+ * Evaluates how "fair" a swap looks on Yahoo's public rank numbers (season rank, O-Rank fallback).
+ * Returns null if Yahoo ranks are unavailable for any involved player.
+ */
+export function computeYahooFairness(ctx, gives, gets) {
+  if (!ctx || !gives?.length || !gets?.length) return null;
+  const giveRanks = gives.map(p => getYahooRank(ctx, p.name).effective);
+  const getRanks = gets.map(p => getYahooRank(ctx, p.name).effective);
+  if (giveRanks.some(r => r == null) || getRanks.some(r => r == null)) return null;
+
+  const giveSummary = giveRanks.map(r => `#${r}`).join('+');
+  const getSummary = getRanks.map(r => `#${r}`).join('+');
+  const detail = `Y! ${giveSummary} → ${getSummary}`;
+
+  if (gives.length === 1 && gets.length === 1) {
+    const gap = giveRanks[0] - getRanks[0]; // positive => giving higher rank # (worse) for lower # (better)
+    if (gap > 15) {
+      return { cls: 'warn', label: `Yahoo: Reach (+${gap})`, detail, gap };
+    }
+    if (gap < -15) {
+      return { cls: 'info', label: `Yahoo: Overpay (${gap})`, detail, gap };
+    }
+    return { cls: 'good', label: 'Yahoo: Fair', detail, gap };
+  }
+
+  const waiverScore = yahooRankScore(160);
+  const giveScore = giveRanks.reduce((s, r) => s + yahooRankScore(r), 0)
+    + Math.max(0, gets.length - gives.length) * waiverScore;
+  const getScore = getRanks.reduce((s, r) => s + yahooRankScore(r), 0)
+    + Math.max(0, gives.length - gets.length) * waiverScore;
+  const diff = giveScore - getScore; // positive => partner gets more Yahoo perceived value
+
+  if (diff < -0.35) {
+    return { cls: 'warn', label: 'Yahoo: Reach', detail, diff };
+  }
+  if (diff > 0.45) {
+    return { cls: 'info', label: 'Yahoo: Overpay', detail, diff };
+  }
+  return { cls: 'good', label: 'Yahoo: Fair', detail, diff };
 }
 
 /**
@@ -656,7 +731,8 @@ export function evaluateTrade(ctx, myTeamId, outgoing, incoming, partnerCats = A
   let partner = null;
   let partnerMoves = null;
   if (singlePartner != null) {
-    partnerMoves = applyMoves(ctx, singlePartner, incoming, outgoing, partnerCatsList, false);
+    const partnerOutgoing = incoming.filter(p => ctx.ownerByName.get(p.name) === singlePartner);
+    partnerMoves = applyMoves(ctx, singlePartner, partnerOutgoing, outgoing, partnerCatsList, false);
     distAfter.set(singlePartner, distFromTotals(partnerMoves.totals));
     partner = { teamId: singlePartner, drops: partnerMoves.drops, fillers: partnerMoves.fillers };
   } else if (partnerIds.length > 1) {
@@ -804,6 +880,8 @@ export function computeSellCandidates(ctx, myTeamId) {
     };
   });
 
+  const replZ = ctx.replacement.z_total ?? -2;
+  const spotFloorZ = Math.max(replZ, -2.0);
   const zVals = rows.map(r => r.fullZ);
   const minZ = zVals.length ? Math.min(...zVals) : 0;
   const maxZ = zVals.length ? Math.max(...zVals) : 1;
@@ -816,13 +894,15 @@ export function computeSellCandidates(ctx, myTeamId) {
     r.fitGap = Math.max(0, normZ - normMarg);
 
     const hasMismatch = r.puntDrag >= 0.35 || r.surplusZ >= 0.35;
-    const isCornerstone = (
+    const isTopTierHero = r.marketRank != null && r.marketRank <= 10 && r.puntDrag < 1.8 && r.rankShift < 10;
+    const isCornerstone = isTopTierHero || (
       r.marketRank != null &&
-      r.marketRank <= 15 &&
-      r.puntDrag < 1.2 &&
-      r.rankShift < 12 &&
-      r.surplusZ < 1.0
+      r.marketRank <= 18 &&
+      r.puntDrag < 1.1 &&
+      r.rankShift < 10 &&
+      r.surplusZ < 1.35
     );
+    const isWaiverTier = (r.marketRank != null && r.marketRank > 140) || r.fullZ < spotFloorZ - 0.6;
 
     const rawScore = (
       r.puntDrag * 0.45 +
@@ -831,16 +911,18 @@ export function computeSellCandidates(ctx, myTeamId) {
       (hasMismatch ? r.fitGap * 0.40 : r.fitGap * 0.18)
     );
     r.isCornerstone = isCornerstone;
-    r.autoEligible = !isCornerstone;
-    r.sellScore = isCornerstone ? rawScore - 2.0 : rawScore;
+    r.isWaiverTier = isWaiverTier;
+    r.autoEligible = !isCornerstone && !isWaiverTier;
+    r.sellScore = isCornerstone ? rawScore - 2.0 : isWaiverTier ? rawScore - 1.2 : rawScore;
 
     r.tags = [];
+    if (isWaiverTier) r.tags.push('Waiver tier — check FA Swaps');
     if (r.puntDrag >= 0.6 || r.rankShift >= 10) r.tags.push('Poor punt fit');
     if (r.surplusZ >= 0.65) r.tags.push('Surplus cat overlap');
-    if (!isCornerstone && r.marketRank != null && r.marketRank <= 80 && r.fitGap >= 0.25) {
+    if (!isCornerstone && !isWaiverTier && r.marketRank != null && r.marketRank <= 80 && r.fitGap >= 0.25) {
       r.tags.push('Market value > team impact');
     }
-    if (!isCornerstone && r.marginal <= 0.04) r.tags.push('Minimal team impact');
+    if (!isCornerstone && !isWaiverTier && r.marginal <= 0.04) r.tags.push('Minimal team impact');
   }
 
   rows.sort((a, b) => b.sellScore - a.sellScore);
@@ -862,6 +944,7 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
     posFilter = 'all',
     catFilter = 'all',
     winWinOnly = false,
+    yahooFairOnly = false,
   } = options;
 
   const typeSet = tradeTypes instanceof Set ? tradeTypes : new Set(tradeTypes);
@@ -887,11 +970,13 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
     if (!otherTeamsPlayers.has(owner)) otherTeamsPlayers.set(owner, []);
     otherTeamsPlayers.get(owner).push(p);
   }
+  const spotCostZ = Math.max(replZ, -2.0);
   const partnerWorstZ = new Map();
   for (const [tid, plist] of otherTeamsPlayers) {
     const fullTeamActive = ctx.teamById.get(tid).players.filter(p => isActiveSlot(p) && ctx.contrib.get(p.name));
-    const minZ = fullTeamActive.length ? Math.min(...fullTeamActive.map(p => ctx.fullValue(p))) : replZ;
-    partnerWorstZ.set(tid, minZ);
+    const rawMinZ = fullTeamActive.length ? Math.min(...fullTeamActive.map(p => ctx.fullValue(p))) : spotCostZ;
+    // Cap drop-slot credit near the waiver wire so bench outliers don't justify trading two waiver guys for a starter.
+    partnerWorstZ.set(tid, Math.max(rawMinZ, spotCostZ - 0.5));
   }
 
   const myActive = myTeam.players.filter(p => isActiveSlot(p) && ctx.contrib.get(p.name));
@@ -902,9 +987,13 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
     const r = quickPackageSwap(ctx, myTeamId, gives, gets, partnerId, partnerCats);
     if (r.myDelta <= 0.015) return null;
     if (winWinOnly && r.partnerDelta < 0) return null;
+    if (r.partnerDelta < (type === '1for1' ? -0.08 : -0.05)) return null;
 
     const catChanges = buildCatChanges(myBeforeDist, r.myDist, myBefore.perCat, r.myAfter.perCat);
     if (catFilter !== 'all' && (catChanges[catFilter]?.probDelta ?? 0) < 0.015) return null;
+
+    const yahooFairness = computeYahooFairness(ctx, gives, gets);
+    if (yahooFairOnly && yahooFairness?.cls === 'warn') return null;
 
     const giveRanks = gives.map(p => getMarketRank(ctx, p.name)).filter(Boolean);
     const getRanks = gets.map(p => getMarketRank(ctx, p.name)).filter(Boolean);
@@ -933,6 +1022,7 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
       rankGap: (giveRanks[0] && getRanks[0]) ? giveRanks[0] - getRanks[0] : 0,
       vorDiff,
       fairness: fairnessLabel,
+      yahooFairness,
       winWin: r.partnerDelta >= 0,
       posWarnings: r.posWarnings,
       hasSeverePosError,
@@ -940,39 +1030,75 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
     };
   }
 
+  const candidateScore = c => (
+    c.myDelta +
+    c.partnerDelta * 0.45 +
+    (c.winWin ? 0.06 : 0) +
+    (c.yahooFairness?.cls === 'good' ? 0.04 : c.yahooFairness?.cls === 'warn' ? -0.06 : 0) -
+    (c.fairness === 'Reach' ? 0.04 : 0) -
+    (c.hasSeverePosError ? 0.15 : 0)
+  );
+
   const allCandidates = [];
 
-  // 1) 1-for-1 offers
+  // 1) 1-for-1 offers (tier-scaled rank window + Z-gap guard so top stars aren't swapped across huge tiers)
   if (typeSet.has('1for1')) {
     for (const give of validGives) {
       const giveRank = getMarketRank(ctx, give.name);
       if (giveRank == null) continue;
+      const zGive = ctx.fullValue(give);
       const local = [];
       for (const get of others) {
         const getRank = getMarketRank(ctx, get.name);
-        if (getRank == null || Math.abs(getRank - giveRank) > window) continue;
-        const rankGap = giveRank - getRank;
+        if (getRank == null || getRank > 145) continue;
+        const zGet = ctx.fullValue(get);
+        if (zGet < spotCostZ - 0.2) continue;
+
+        // Top-3 gods (Jokic/Wemby/Luka tier) only swap 1-for-1 within top 3 and within 1.4 Z
+        if (getRank <= 3 && (giveRank > 3 || zGet - zGive > 1.4)) continue;
+
+        const rankGap = giveRank - getRank; // positive => reaching up for higher-ranked player
+        if (rankGap > 0) {
+          const maxUpwardGap = Math.min(window, Math.max(2, Math.floor(getRank * (window / 45))));
+          if (rankGap > maxUpwardGap) continue;
+        } else {
+          const maxDownwardGap = Math.min(window + 5, Math.max(4, Math.floor(giveRank * (window / 25))));
+          if (-rankGap > maxDownwardGap) continue;
+        }
+
+        // Prevent lopsided Z-score jumps even when ordinal ranks look close (e.g. #4 -> #1 is >4 Z)
+        const vorDiff = zGive - zGet; // negative => asking for more 9-cat Z than giving
+        if (vorDiff < -1.35 || vorDiff > 1.75) continue;
+
+        const reachRankThresh = Math.max(3, Math.min(6, Math.floor(getRank * 0.15)));
+        const overpayRankThresh = Math.max(4, Math.min(8, Math.floor(giveRank * 0.2)));
         let fairness = 'Fair value';
-        if (rankGap > 5) fairness = 'Reach';
-        else if (rankGap < -5) fairness = 'Overpay';
-        const cand = evaluateCandidate('1for1', [give], [get], ctx.ownerByName.get(get.name), rankGap / 10, fairness);
+        if (vorDiff < -0.45 || rankGap > reachRankThresh) fairness = 'Reach';
+        else if (vorDiff > 0.55 || -rankGap > overpayRankThresh) fairness = 'Overpay';
+
+        const cand = evaluateCandidate('1for1', [give], [get], ctx.ownerByName.get(get.name), vorDiff, fairness);
         if (cand) local.push(cand);
       }
-      local.sort((a, b) => b.myDelta - a.myDelta);
+      local.sort((a, b) => candidateScore(b) - candidateScore(a));
       allCandidates.push(...local.slice(0, perGive));
     }
   }
 
-  // 2) 2-for-1 consolidations (Give 2 -> Get 1 Star + Open Waiver/Stream Spot)
+  // 2) 2-for-1 consolidations (Give 2 real starters -> Get 1 Clear Upgrade + Open Waiver/Stream Spot)
   if (typeSet.has('2for1') && myActive.length >= 2) {
     const seenPairs = new Set();
     const pairs = [];
     for (const g1 of validGives) {
+      const z1 = ctx.fullValue(g1);
+      const r1 = getMarketRank(ctx, g1.name) ?? 999;
+      if (z1 < spotCostZ - 0.3 || r1 > 120) continue;
       for (const g2 of myActive) {
         if (g1.name === g2.name) continue;
-        // Skip pairing a non-selected top-15 cornerstone as throw-in sweetener
-        const r2 = getMarketRank(ctx, g2.name);
-        if (r2 != null && r2 <= 15 && !validGives.some(x => x.name === g2.name)) continue;
+        // Both outgoing players must be rosterable starters, not waiver-grade throw-ins.
+        const z2 = ctx.fullValue(g2);
+        const r2 = getMarketRank(ctx, g2.name) ?? 999;
+        if (z2 < spotCostZ + 0.15 || r2 > 110) continue;
+        if (r2 <= 18 && !validGives.some(x => x.name === g2.name)) continue;
         const key = [g1.name, g2.name].sort().join('||');
         if (seenPairs.has(key)) continue;
         seenPairs.add(key);
@@ -988,27 +1114,34 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
       const r2 = getMarketRank(ctx, g2.name) ?? 150;
       const bestGiveZ = Math.max(z1, z2);
       const bestGiveRank = Math.min(r1, r2);
+      const secondGiveRank = Math.max(r1, r2);
 
       for (const get of others) {
         const zGet = ctx.fullValue(get);
-        if (zGet <= bestGiveZ + 0.35) continue; // must be a genuine upgrade over either piece
         const rGet = getMarketRank(ctx, get.name) ?? 999;
-        if (rGet <= 12 && bestGiveRank > 45) continue; // guard against two mid guys for a top-12 cornerstone
+        if (zGet <= bestGiveZ + 0.45) continue; // must be a clear upgrade over the better outgoing piece
+        if (rGet >= bestGiveRank - 3) continue; // incoming player should meaningfully outrank your best piece
+        if (rGet <= 5 && (bestGiveRank > 12 || secondGiveRank > 35)) continue; // top-5 gods require a 1st-rounder + top-35 piece
+        if (rGet <= 15 && (bestGiveRank > 28 || secondGiveRank > 65)) continue; // top-15 stars require a top-28 anchor + top-65 piece
+        if (rGet <= 30 && (bestGiveRank > 48 || secondGiveRank > 90)) continue;
+        if (zGet - bestGiveZ > 3.2) continue; // prevent implausible two-mid-for-superstar packages
 
         const pid = ctx.ownerByName.get(get.name);
-        const pDropZ = partnerWorstZ.get(pid) ?? replZ;
+        const pDropZ = partnerWorstZ.get(pid) ?? spotCostZ;
+        // Partner only gains real value if the second piece meaningfully beats their drop/waiver slot.
+        if (Math.min(z1, z2) < pDropZ + 0.55) continue;
         const partnerVorDelta = (z1 + z2) - (zGet + pDropZ);
-        if (partnerVorDelta < -1.8 || partnerVorDelta > 2.4) continue;
+        if (partnerVorDelta < -0.45 || partnerVorDelta > 1.25) continue;
 
         let fairness = 'Fair value';
-        if (partnerVorDelta < -0.5) fairness = 'Reach';
-        else if (partnerVorDelta > 0.7) fairness = 'Overpay';
+        if (partnerVorDelta < -0.15) fairness = 'Reach';
+        else if (partnerVorDelta > 0.55) fairness = 'Overpay';
 
         const cand = evaluateCandidate('2for1', [g1, g2], [get], pid, partnerVorDelta, fairness);
         if (cand) twoForOnePool.push(cand);
       }
     }
-    twoForOnePool.sort((a, b) => (b.myDelta + (b.winWin ? 0.05 : 0)) - (a.myDelta + (a.winWin ? 0.05 : 0)));
+    twoForOnePool.sort((a, b) => candidateScore(b) - candidateScore(a));
     // Cap repeats per incoming star so 2-for-1 doesn't repeat the same star 10 times
     const starCounts = new Map();
     for (const c of twoForOnePool) {
@@ -1020,28 +1153,35 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
     }
   }
 
-  // 3) 1-for-2 depth splits (Give 1 Star -> Get 2 solid starters from the SAME partner)
+  // 3) 1-for-2 depth splits (Give 1 Clear Star -> Get 2 solid starters from the SAME partner)
   if (typeSet.has('1for2') && myActive.length >= 2) {
     const oneForTwoPool = [];
     for (const give of validGives) {
       const zGive = ctx.fullValue(give);
       const rGive = getMarketRank(ctx, give.name) ?? 999;
-      if (rGive > 90 && zGive < replZ + 1.5) continue; // must be worth splitting
+      if (rGive > 55 || zGive < spotCostZ + 2.0) continue; // only split an actual top-55 star
 
       const remainingActive = myActive.filter(p => p.name !== give.name);
       const myDropZ = remainingActive.length
         ? Math.min(...remainingActive.map(p => sumZ(ctx.zTable.get(p.name), ctx.activeList)))
-        : replZ;
-      const myDropFullZ = remainingActive.length
+        : spotCostZ;
+      const myRawDropFullZ = remainingActive.length
         ? Math.min(...remainingActive.map(p => ctx.fullValue(p)))
-        : replZ;
+        : spotCostZ;
+      const mySpotFloorZ = Math.max(myRawDropFullZ, spotCostZ - 0.4);
 
       for (const [pid, plist] of otherTeamsPlayers) {
         const eligible = plist
           .filter(p => {
             const zP = ctx.fullValue(p);
             const rP = getMarketRank(ctx, p.name) ?? 999;
-            return zP > myDropFullZ + 0.45 && zP < zGive + 0.25 && rP <= 145 && sumZ(ctx.zTable.get(p.name), ctx.activeList) > myDropZ + 0.25;
+            return (
+              rP > rGive + 4 && // partner must be getting the clear best player in the deal
+              rP <= (rGive <= 12 ? 55 : 100) && // splitting a top-12 star requires two top-55 returns
+              zP < zGive - 0.55 &&
+              zP > mySpotFloorZ + 0.5 &&
+              sumZ(ctx.zTable.get(p.name), ctx.activeList) > myDropZ + 0.25
+            );
           })
           .sort((a, b) => ctx.fullValue(b) - ctx.fullValue(a))
           .slice(0, 9);
@@ -1052,12 +1192,12 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
             const g2 = eligible[j];
             const z1 = ctx.fullValue(g1);
             const z2 = ctx.fullValue(g2);
-            const partnerVorDelta = (zGive + replZ) - (z1 + z2);
-            if (partnerVorDelta < -1.8 || partnerVorDelta > 2.4) continue;
+            const partnerVorDelta = (zGive + spotCostZ) - (z1 + z2);
+            if (partnerVorDelta < -0.55 || partnerVorDelta > 1.15) continue;
 
             let fairness = 'Fair value';
-            if (partnerVorDelta < -0.5) fairness = 'Reach';
-            else if (partnerVorDelta > 0.7) fairness = 'Overpay';
+            if (partnerVorDelta < -0.15) fairness = 'Reach';
+            else if (partnerVorDelta > 0.55) fairness = 'Overpay';
 
             const cand = evaluateCandidate('1for2', [give], [g1, g2], pid, partnerVorDelta, fairness);
             if (cand) oneForTwoPool.push(cand);
@@ -1065,18 +1205,280 @@ export function computeTradeTargets(ctx, myTeamId, givePlayers, options = {}) {
         }
       }
     }
-    oneForTwoPool.sort((a, b) => (b.myDelta + (b.winWin ? 0.05 : 0)) - (a.myDelta + (a.winWin ? 0.05 : 0)));
+    oneForTwoPool.sort((a, b) => candidateScore(b) - candidateScore(a));
     allCandidates.push(...oneForTwoPool.slice(0, Math.max(6, limit)));
   }
 
-  // Deduplicate and rank by net team value (preferring win-win and clean positional fit)
+  // Deduplicate and rank by composite team + partner + Yahoo fairness score
   const dedup = new Map();
   for (const c of allCandidates) {
     if (!dedup.has(c.id)) dedup.set(c.id, c);
   }
   const unique = [...dedup.values()];
-  const score = c => c.myDelta + (c.winWin ? 0.05 : 0) - (c.hasSeverePosError ? 0.12 : 0);
-  unique.sort((a, b) => score(b) - score(a));
+  unique.sort((a, b) => candidateScore(b) - candidateScore(a));
 
   return unique.slice(0, limit);
+}
+
+function isOutStatus(player) {
+  return OUT_STATUS_SET.has(String(player?.status || '').toUpperCase().trim());
+}
+
+function getRosRank(player) {
+  const r = Number(player?.ros_stats?.rank ?? player?.rank);
+  return Number.isFinite(r) && r > 0 && r < 999 ? r : null;
+}
+
+function classifyDropProtection(ctx, player) {
+  const marketRank = getMarketRank(ctx, player.name);
+  const rosRank = getRosRank(player);
+  const yahooEff = getYahooRank(ctx, player.name).effective;
+  const fullZ = ctx.fullValue(player);
+  const puntZ = ctx.puntValue(player);
+  const spotFloorZ = Math.max(ctx.replacement?.z_total ?? -2, -2.0);
+  const out = isOutStatus(player);
+
+  const bestKnownRank = Math.min(
+    marketRank ?? 999,
+    rosRank ?? 999,
+    yahooEff != null ? Math.max(yahooEff, 40) : 999
+  );
+
+  // Protect injured top-100 players: they should be moved to IL, never dropped to waivers.
+  if (out && ((rosRank != null && rosRank <= 105) || (marketRank != null && marketRank <= 105) || (yahooEff != null && yahooEff <= 90))) {
+    return {
+      isProtected: true,
+      protectionType: 'il-stash',
+      protectionLabel: '🏥 Stash on IL — do not drop',
+      rosRank,
+    };
+  }
+
+  // Protect genuine top-90 tradeable assets from waiver drops (even if slumping in EMA/Weekly).
+  const isStrongAsset = (
+    (rosRank != null && rosRank <= 90) ||
+    (marketRank != null && marketRank <= 85) ||
+    (bestKnownRank <= 95 && fullZ >= spotFloorZ + 1.1 && puntZ >= spotFloorZ + 0.6)
+  );
+  if (isStrongAsset) {
+    return {
+      isProtected: true,
+      protectionType: 'hold-trade',
+      protectionLabel: rosRank != null && marketRank != null && marketRank - rosRank >= 25
+        ? `🔒 Hold (ROS #${rosRank})`
+        : '🔒 Hold / Trade instead',
+      rosRank,
+    };
+  }
+
+  return {
+    isProtected: false,
+    protectionType: null,
+    protectionLabel: null,
+    rosRank,
+  };
+}
+
+function evaluateSingleFaSwap(ctx, myTeamId, dropPlayer, fa) {
+  const myTeam = ctx.teamById.get(myTeamId);
+  const myBeforeDist = ctx.distById.get(myTeamId);
+  const myBefore = ctx.baseWins.get(myTeamId);
+
+  const mine = applyMoves(ctx, myTeamId, [dropPlayer], [fa], ctx.activeList, false);
+  const dist = new Map(ctx.distById);
+  const myDist = distFromTotals(mine.totals);
+  dist.set(myTeamId, myDist);
+
+  const myAfter = expectedCatWins(myTeamId, dist, ctx.activeCats);
+  const myDelta = myAfter.total - myBefore.total;
+  const catChanges = buildCatChanges(myBeforeDist, myDist, myBefore.perCat, myAfter.perCat);
+  const posWarnings = comparePositionImpact(myTeam.players, mine.afterPlayers, ctx.rosterPositions);
+  const hasSeverePosError = posWarnings.some(w => w.severity === 'error');
+  const hasMinorPosWarn = posWarnings.length > 0 && !hasSeverePosError;
+
+  const dropZ = ctx.puntValue(dropPlayer);
+  const addZ = ctx.puntValue(fa);
+  const puntZDelta = addZ - dropZ;
+  const dropRank = getMarketRank(ctx, dropPlayer.name);
+  const addRank = getMarketRank(ctx, fa.name);
+  const dropYahooRank = getYahooRank(ctx, dropPlayer.name).effective;
+  const addYahooRank = getYahooRank(ctx, fa.name).effective;
+  const protection = classifyDropProtection(ctx, dropPlayer);
+
+  const activeCatMoves = CATEGORIES
+    .filter(c => ctx.activeCats.has(c.key))
+    .map(c => ({ key: c.key, probDelta: catChanges[c.key]?.probDelta ?? 0 }))
+    .sort((a, b) => b.probDelta - a.probDelta);
+  const topGains = activeCatMoves.filter(x => x.probDelta >= 0.01).slice(0, 2).map(x => x.key);
+  const topLosses = activeCatMoves.filter(x => x.probDelta <= -0.01).slice(-2).reverse().map(x => x.key);
+
+  const reasonTags = [];
+  if (protection.isProtected) {
+    reasonTags.push(protection.protectionType === 'il-stash' ? 'Caution: IL stash (#ROS)' : `Caution: #${protection.rosRank ?? dropRank} asset`);
+  } else if (isOutStatus(dropPlayer) && !isOutStatus(fa)) {
+    reasonTags.push('Replaces OUT player');
+  } else if (!ctx.contrib.get(dropPlayer.name)) {
+    reasonTags.push('Replaces zero-minute slot');
+  }
+  if (topGains.length > 0) reasonTags.push(`Boosts ${topGains.join(' & ')}`);
+  if (puntZDelta >= 0.6 && myDelta > 0.02) reasonTags.push('Clear value upgrade');
+  else if (puntZDelta < 0 && myDelta > 0.02) reasonTags.push('Better build fit');
+  if (addYahooRank != null && addYahooRank <= 90) reasonTags.push(`Y! Top-${addYahooRank <= 50 ? 50 : 90} FA`);
+
+  const swapScore = (
+    myDelta +
+    Math.min(0.08, Math.max(-0.08, puntZDelta * 0.02)) -
+    (hasSeverePosError ? 0.25 : hasMinorPosWarn ? 0.04 : 0) -
+    (protection.isProtected ? 0.35 : 0)
+  );
+
+  return {
+    id: `fa:${dropPlayer.name}=>${fa.name}`,
+    type: 'fa-swap',
+    drop: dropPlayer,
+    add: fa,
+    gives: [dropPlayer],
+    gets: [fa],
+    myDelta,
+    swapScore,
+    puntZDelta,
+    dropZ,
+    addZ,
+    dropRank,
+    addRank,
+    dropYahooRank,
+    addYahooRank,
+    dropRosRank: protection.rosRank,
+    isDropProtected: protection.isProtected,
+    catChanges,
+    topGains,
+    topLosses,
+    posWarnings,
+    hasSeverePosError,
+    reasonTags,
+  };
+}
+
+/**
+ * Ranks active roster players by upgradeability against available free agents,
+ * separating real end-of-bench drop candidates from protected core/tradeable players.
+ */
+export function computeDropCandidates(ctx, myTeamId, options = {}) {
+  const { hideOutFas = true } = options;
+  const team = ctx.teamById.get(myTeamId);
+  if (!team) return [];
+
+  const activeRoster = team.players.filter(isActiveSlot);
+  const candidateFas = (ctx.freeAgents || []).filter(fa => (
+    ctx.contrib.get(fa.name) != null && (!hideOutFas || !isOutStatus(fa))
+  ));
+
+  const rows = activeRoster.map(p => {
+    const marketRank = getMarketRank(ctx, p.name);
+    const yahooRank = getYahooRank(ctx, p.name).effective;
+    const puntZ = ctx.puntValue(p);
+    const out = isOutStatus(p);
+    const hasStats = ctx.contrib.get(p.name) != null;
+    const protection = classifyDropProtection(ctx, p);
+
+    let bestFa = null;
+    let bestFaDelta = null;
+    for (const fa of candidateFas) {
+      const res = evaluateSingleFaSwap(ctx, myTeamId, p, fa);
+      if (res.hasSeverePosError) continue;
+      if (!protection.isProtected && res.puntZDelta < -0.55) continue;
+      if (bestFaDelta == null || res.myDelta > bestFaDelta) {
+        bestFaDelta = res.myDelta;
+        bestFa = fa;
+      }
+    }
+
+    return {
+      player: p,
+      marketRank,
+      yahooRank,
+      rosRank: protection.rosRank,
+      puntZ,
+      isOut: out,
+      hasStats,
+      isProtected: protection.isProtected,
+      protectionLabel: protection.protectionLabel,
+      autoDropEligible: !protection.isProtected,
+      bestFa,
+      bestFaDelta,
+    };
+  });
+
+  rows.sort((a, b) => {
+    // Keep genuine drop candidates above protected Hold/Trade stars
+    if (a.isProtected !== b.isProtected) return a.isProtected ? 1 : -1;
+    const da = a.bestFaDelta ?? -999;
+    const db = b.bestFaDelta ?? -999;
+    if (Math.abs(db - da) > 0.005) return db - da;
+    return a.puntZ - b.puntZ;
+  });
+  return rows;
+}
+
+/**
+ * Evaluates switching current active-roster players for available free agents.
+ * In Auto mode (onlyPositive=true), skips protected core players, blocks severe positional
+ * errors or large punt-Z downgrades, and deduplicates so the same FA isn't repeated for every bench slot.
+ */
+export function computeFreeAgentSwaps(ctx, myTeamId, dropPlayers, options = {}) {
+  const {
+    limit = 18,
+    perDrop = 4,
+    posFilter = 'all',
+    catFilter = 'all',
+    hideOutFas = true,
+    onlyPositive = true,
+  } = options;
+
+  const rawDrops = (dropPlayers || []).filter(isActiveSlot);
+  const drops = onlyPositive
+    ? rawDrops.filter(p => !classifyDropProtection(ctx, p).isProtected)
+    : rawDrops;
+  if (!drops.length) return [];
+
+  const candidateFas = (ctx.freeAgents || []).filter(fa => (
+    ctx.contrib.get(fa.name) != null &&
+    (!hideOutFas || !isOutStatus(fa)) &&
+    playerHasPosition(fa, posFilter)
+  ));
+  if (!candidateFas.length) return [];
+
+  const results = [];
+  for (const dropPlayer of drops) {
+    const local = [];
+    for (const fa of candidateFas) {
+      const swap = evaluateSingleFaSwap(ctx, myTeamId, dropPlayer, fa);
+      if (onlyPositive) {
+        if (swap.myDelta < 0.015) continue;
+        if (swap.hasSeverePosError) continue;
+        if (swap.puntZDelta < -0.55) continue;
+      }
+      if (catFilter !== 'all' && (swap.catChanges[catFilter]?.probDelta ?? 0) < 0.01) continue;
+      local.push(swap);
+    }
+    local.sort((a, b) => b.swapScore - a.swapScore);
+    results.push(...local.slice(0, perDrop));
+  }
+
+  results.sort((a, b) => b.swapScore - a.swapScore);
+
+  const dedup = new Map();
+  const faAppearances = new Map();
+  const maxPerFa = onlyPositive && drops.length > 1 ? 2 : limit;
+
+  for (const r of results) {
+    if (dedup.has(r.id)) continue;
+    const faCount = faAppearances.get(r.add.name) || 0;
+    if (faCount >= maxPerFa) continue;
+    faAppearances.set(r.add.name, faCount + 1);
+    dedup.set(r.id, r);
+    if (dedup.size >= limit) break;
+  }
+
+  return [...dedup.values()];
 }

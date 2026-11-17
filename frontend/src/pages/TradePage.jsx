@@ -8,6 +8,7 @@ import CategoryStandings from '../components/trade/CategoryStandings.jsx';
 import PlayerSelector from '../components/trade/PlayerSelector.jsx';
 import TradeImpactPanel from '../components/trade/TradeImpactPanel.jsx';
 import TradeSuggestionsPanel from '../components/trade/TradeSuggestionsPanel.jsx';
+import FreeAgentSwapsPanel from '../components/trade/FreeAgentSwapsPanel.jsx';
 import { SOURCE_OPTIONS } from '../components/trade/tradeFormatters.js';
 import { searchFreeAgents } from '../services/apiClient.js';
 import { readSessionJson, writeSessionJson } from '../services/storageCache.js';
@@ -20,6 +21,8 @@ import {
   categoryRanks,
   computeSellCandidates,
   computeTradeTargets,
+  computeDropCandidates,
+  computeFreeAgentSwaps,
 } from '../utils/tradeEngine.js';
 import './TradePage.css';
 
@@ -35,6 +38,8 @@ export default function TradePage() {
   const [impactView, setImpactView] = useState('team');
   const [streamOpenSpot, setStreamOpenSpot] = useState(false);
   const [freeAgents, setFreeAgents] = useState([]);
+  const [faLoading, setFaLoading] = useState(false);
+  const [faError, setFaError] = useState(false);
   const [partnerPuntsMap, setPartnerPuntsMap] = useState({});
   const [giveFocus, setGiveFocus] = useState('__AUTO__');
   const [rankWindow, setRankWindow] = useState(15);
@@ -43,6 +48,11 @@ export default function TradePage() {
   const [posFilter, setPosFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
   const [winWinOnly, setWinWinOnly] = useState(false);
+  const [yahooFairOnly, setYahooFairOnly] = useState(false);
+  const [dropFocus, setDropFocus] = useState('__AUTO__');
+  const [faPosFilter, setFaPosFilter] = useState('all');
+  const [faCatFilter, setFaCatFilter] = useState('all');
+  const [hideOutFas, setHideOutFas] = useState(true);
 
   const togglePunt = key => setPuntedCats(prev => {
     const next = new Set(prev);
@@ -69,10 +79,14 @@ export default function TradePage() {
     const cached = readSessionJson(cacheKey);
     if (Array.isArray(cached)) {
       setFreeAgents(cached);
+      setFaLoading(false);
+      setFaError(false);
       return;
     }
 
     let cancelled = false;
+    setFaLoading(true);
+    setFaError(false);
     const allRostered = leagueData.teams.flatMap(t => (t.players || []).map(p => p.name));
     searchFreeAgents(leagueData.league_id, {
       stats_source: statsSource,
@@ -86,9 +100,13 @@ export default function TradePage() {
           setFreeAgents(agents);
           writeSessionJson(cacheKey, agents);
         }
+        setFaLoading(false);
       })
       .catch(() => {
+        if (cancelled) return;
         // Fallback to synthetic bottom-10% replacement happens inside buildTradeContext.
+        setFaError(true);
+        setFaLoading(false);
       });
 
     return () => { cancelled = true; };
@@ -121,8 +139,13 @@ export default function TradePage() {
     return otherTeams.flatMap(t => t.players).sort((a, b) => ctx.puntValue(b) - ctx.puntValue(a));
   }, [ctx, otherTeams]);
 
+  const gettingPlayers = useMemo(() => {
+    if (!ctx) return [];
+    return [...otherPlayers, ...(ctx.freeAgents || [])].sort((a, b) => ctx.puntValue(b) - ctx.puntValue(a));
+  }, [ctx, otherPlayers]);
+
   const outList = useMemo(() => myPlayers.filter(p => playersOut.has(p.name)), [myPlayers, playersOut]);
-  const inList = useMemo(() => otherPlayers.filter(p => playersIn.has(p.name)), [otherPlayers, playersIn]);
+  const inList = useMemo(() => gettingPlayers.filter(p => playersIn.has(p.name)), [gettingPlayers, playersIn]);
   const hasChanges = outList.length > 0 || inList.length > 0;
 
   const singlePartnerId = useMemo(() => {
@@ -186,8 +209,36 @@ export default function TradePage() {
       posFilter,
       catFilter,
       winWinOnly,
+      yahooFairOnly,
     });
-  }, [ctx, tab, myTeamId, givePlayers, rankWindow, giveFocus, tradeFormat, partnerFilter, partnerPuntsMap, posFilter, catFilter, winWinOnly]);
+  }, [ctx, tab, myTeamId, givePlayers, rankWindow, giveFocus, tradeFormat, partnerFilter, partnerPuntsMap, posFilter, catFilter, winWinOnly, yahooFairOnly]);
+
+  const dropRows = useMemo(
+    () => (ctx && tab === 'fa-swaps' ? computeDropCandidates(ctx, myTeamId, { hideOutFas }) : []),
+    [ctx, tab, myTeamId, hideOutFas]
+  );
+
+  const faDropPlayers = useMemo(() => {
+    if (dropFocus === '__AUTO__') {
+      const eligible = dropRows.filter(r => r.autoDropEligible);
+      return (eligible.length ? eligible : dropRows).map(r => r.player);
+    }
+    const p = myPlayers.find(x => x.name === dropFocus);
+    return p ? [p] : [];
+  }, [dropFocus, dropRows, myPlayers]);
+
+  const faSwaps = useMemo(() => {
+    if (!ctx || tab !== 'fa-swaps') return [];
+    const isAuto = dropFocus === '__AUTO__';
+    return computeFreeAgentSwaps(ctx, myTeamId, faDropPlayers, {
+      limit: 18,
+      perDrop: isAuto ? 3 : 12,
+      posFilter: faPosFilter,
+      catFilter: faCatFilter,
+      hideOutFas,
+      onlyPositive: isAuto,
+    });
+  }, [ctx, tab, myTeamId, dropFocus, faDropPlayers, faPosFilter, faCatFilter, hideOutFas]);
 
   const loadIntoAnalyzer = t => {
     const gives = t.gives || [t.give];
@@ -239,14 +290,40 @@ export default function TradePage() {
         </div>
 
         <div className="trade-controls-bar">
-          <div className="mode-toggle">
-            <button className={`btn-ghost ${tab === 'analyzer' ? 'active' : ''}`} onClick={() => setTab('analyzer')}>
+          <div className="mode-toggle trade-mode-tabs" role="tablist" aria-label="Trade Center views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'analyzer'}
+              className={`trade-mode-btn ${tab === 'analyzer' ? 'active' : ''}`}
+              onClick={() => setTab('analyzer')}
+            >
               Trade Analyzer
             </button>
-            <button className={`btn-ghost ${tab === 'suggest' ? 'active' : ''}`} onClick={() => setTab('suggest')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'suggest'}
+              className={`trade-mode-btn ${tab === 'suggest' ? 'active' : ''}`}
+              onClick={() => setTab('suggest')}
+            >
               Trade Suggestions
             </button>
-            <button className="btn-ghost" onClick={() => navigate('/streamers')} title="Free-agent streaming lives on the Streamers page">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'fa-swaps'}
+              className={`trade-mode-btn ${tab === 'fa-swaps' ? 'active' : ''}`}
+              onClick={() => setTab('fa-swaps')}
+            >
+              Free Agent Swaps
+            </button>
+            <button
+              type="button"
+              className="trade-mode-btn external"
+              onClick={() => navigate('/streamers')}
+              title="Daily schedule streaming lives on the Streamers page"
+            >
               Streamers ↗
             </button>
           </div>
@@ -295,11 +372,13 @@ export default function TradePage() {
                 label="Players you receive"
                 badge="Getting"
                 badgeClass="badge-green"
-                players={otherPlayers}
+                players={gettingPlayers}
                 selected={playersIn}
                 onToggle={toggleSet(setPlayersIn)}
                 ctx={ctx}
                 teamOptions={otherTeams}
+                includeFreeAgents
+                faLoading={faLoading}
               />
               {hasChanges && (
                 <button
@@ -335,7 +414,7 @@ export default function TradePage() {
               onTogglePartnerPunt={togglePartnerPunt}
             />
           </div>
-        ) : (
+        ) : tab === 'suggest' ? (
           <TradeSuggestionsPanel
             ctx={ctx}
             puntedCats={puntedCats}
@@ -355,11 +434,31 @@ export default function TradePage() {
             setCatFilter={setCatFilter}
             winWinOnly={winWinOnly}
             setWinWinOnly={setWinWinOnly}
+            yahooFairOnly={yahooFairOnly}
+            setYahooFairOnly={setYahooFairOnly}
             streamOpenSpot={streamOpenSpot}
             setStreamOpenSpot={setStreamOpenSpot}
             otherTeams={otherTeams}
             targets={targets}
             onLoadTrade={loadIntoAnalyzer}
+          />
+        ) : (
+          <FreeAgentSwapsPanel
+            ctx={ctx}
+            puntedCats={puntedCats}
+            dropRows={dropRows}
+            dropFocus={dropFocus}
+            setDropFocus={setDropFocus}
+            posFilter={faPosFilter}
+            setPosFilter={setFaPosFilter}
+            catFilter={faCatFilter}
+            setCatFilter={setFaCatFilter}
+            hideOutFas={hideOutFas}
+            setHideOutFas={setHideOutFas}
+            swaps={faSwaps}
+            faLoading={faLoading}
+            faError={faError}
+            onLoadSwap={loadIntoAnalyzer}
           />
         )}
       </div>

@@ -1,11 +1,12 @@
 import { CATEGORIES, zScoreClass } from '../../utils/zScore.js';
 import { formatZ } from '../../utils/formatters.js';
-import { isActiveSlot, getMarketRank } from '../../utils/tradeEngine.js';
+import { isActiveSlot, getMarketRank, getYahooRank } from '../../utils/tradeEngine.js';
 import { signed } from './tradeFormatters.js';
 
 export default function PlayerBreakdownCard({ p, kind, ctx, puntedCats }) {
   const z = ctx.zTable.get(p.name) || {};
   const rank = getMarketRank(ctx, p.name);
+  const yr = getYahooRank(ctx, p.name);
   const puntZ = ctx.puntValue(p);
   const vsRep = puntZ - ctx.replacement.puntZ;
 
@@ -22,6 +23,8 @@ export default function PlayerBreakdownCard({ p, kind, ctx, puntedCats }) {
       <span className="pd-name">{p.name}</span>
       <span className="pd-team-pos">
         {p.nba_team} · {p.positions}{rank != null ? ` · Rank #${rank}` : ''}
+        {yr.effective != null ? ` · Yahoo #${yr.effective}` : ''}
+        {yr.orank != null && yr.rank != null && yr.orank !== yr.rank ? ` (OR #${yr.orank})` : ''}
         {!isActiveSlot(p) ? ' · IL (no weekly impact)' : ''}
       </span>
       <div className="pd-cats">

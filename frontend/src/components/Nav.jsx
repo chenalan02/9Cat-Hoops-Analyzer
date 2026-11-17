@@ -7,7 +7,7 @@ import './Nav.css';
 const LINKS = [
   { to: '/',                label: 'Home',                  exact: true },
   { to: '/your-team',       label: 'My Team'                            },
-  { to: '/league-rankings', label: 'League Power Rankings'              },
+  { to: '/league-rankings', label: 'League Rankings'                    },
   { to: '/matchup',         label: 'Matchup'                            },
   { to: '/streamers',       label: 'Streamers'                          },
   { to: '/trade',           label: 'Trade'                              },

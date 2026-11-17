@@ -2,6 +2,7 @@ import json
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 from yfpy.query import YahooFantasySportsQuery
 
@@ -20,6 +21,10 @@ _LIVE_STATS_TTL_SECS = 60.0
 _YAHOO_FA_STATUS_CACHE: dict[str, tuple[float, dict[str, dict[str, str]]]] = {}
 _YAHOO_FA_STATUS_LOCK = threading.Lock()
 _YAHOO_FA_STATUS_TTL = 300
+
+_YAHOO_RANKS_CACHE: dict[tuple[str, str], tuple[float, int | None, int | None]] = {}
+_YAHOO_RANKS_LOCK = threading.Lock()
+_YAHOO_RANKS_TTL = 21600  # 6 hours
 
 _FALLBACK_POSITIONS_LOCK = threading.Lock()
 _FALLBACK_POSITIONS_CACHE: dict[str, str] | None = None
@@ -207,6 +212,138 @@ def extract_player_from_yahoo_entry(player_data):
     return name, status, positions
 
 
+def _parse_positive_int(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def extract_yahoo_player_ranks(player_data, target_season=None) -> tuple[int | None, int | None]:
+    """Return (yahoo_season_rank, yahoo_orank) from a raw Yahoo player payload."""
+    orank = None
+    season_ranks: list[tuple[int, int]] = []
+    target_season_str = str(target_season).strip() if target_season is not None else None
+
+    def _scan(obj):
+        nonlocal orank
+        if isinstance(obj, list):
+            for item in obj:
+                _scan(item)
+            return
+        if not isinstance(obj, dict):
+            return
+        if "player_ranks" in obj:
+            _scan(obj["player_ranks"])
+            return
+        rank_obj = obj.get("player_rank", obj)
+        if not isinstance(rank_obj, dict) or "rank_type" not in rank_obj:
+            return
+        rtype = str(rank_obj.get("rank_type") or "").upper().strip()
+        rval = _parse_positive_int(rank_obj.get("rank_value"))
+        if rval is None:
+            return
+        if rtype == "OR":
+            orank = rval
+        elif rtype == "S":
+            rseason = str(rank_obj.get("rank_season") or "").strip()
+            if target_season_str and rseason == target_season_str:
+                season_ranks.append((999999, rval))
+            else:
+                season_num = _parse_positive_int(rseason) or 0
+                season_ranks.append((season_num, rval))
+
+    _scan(player_data)
+    season_rank = max(season_ranks, key=lambda pair: pair[0])[1] if season_ranks else None
+    return season_rank, orank
+
+
+def get_yahoo_player_ranks_map(yahoo_query, player_keys, target_season=None) -> dict[str, tuple[int | None, int | None]]:
+    """Fetch (yahoo_rank, yahoo_orank) for Yahoo player_keys in parallel batches of 25."""
+    if not yahoo_query or not player_keys:
+        return {}
+    try:
+        league_key = resolve_league_key(yahoo_query)
+    except Exception as exc:
+        logger.warning("Could not resolve league_key for Yahoo player ranks: %s", exc)
+        return {}
+
+    season_key = str(target_season or str(league_key).split(".")[0])
+    now = time.time()
+    result: dict[str, tuple[int | None, int | None]] = {}
+    missing_keys: list[str] = []
+    seen_keys: set[str] = set()
+
+    with _YAHOO_RANKS_LOCK:
+        for pk in player_keys:
+            if not pk or pk in seen_keys:
+                continue
+            seen_keys.add(pk)
+            cached = _YAHOO_RANKS_CACHE.get((season_key, pk))
+            if cached and (now - cached[0] < _YAHOO_RANKS_TTL):
+                result[pk] = (cached[1], cached[2])
+            else:
+                missing_keys.append(pk)
+
+    if not missing_keys:
+        return result
+
+    chunks = [missing_keys[i:i + 25] for i in range(0, len(missing_keys), 25)]
+
+    def _fetch_chunk(chunk):
+        url = (
+            f"https://fantasysports.yahooapis.com/fantasy/v2/league/{league_key}"
+            f"/players;player_keys={','.join(chunk)};out=ranks"
+        )
+        try:
+            resp = yahoo_query.get_response(url)
+            if not resp or resp.status_code != 200:
+                return []
+            data = resp.json()
+            league_content = data.get("fantasy_content", {}).get("league", [])
+            players_dict = {}
+            for item in league_content:
+                if isinstance(item, dict) and "players" in item:
+                    players_dict = item["players"]
+                    break
+            parsed = []
+            if isinstance(players_dict, dict):
+                for key, val in players_dict.items():
+                    if key == "count" or not isinstance(val, dict):
+                        continue
+                    raw_player = val.get("player")
+                    pk = None
+                    if isinstance(raw_player, list) and raw_player and isinstance(raw_player[0], list):
+                        for entry in raw_player[0]:
+                            if isinstance(entry, dict) and entry.get("player_key"):
+                                pk = entry["player_key"]
+                                break
+                    s_rank, o_rank = extract_yahoo_player_ranks(raw_player, target_season=target_season)
+                    if pk:
+                        parsed.append((pk, s_rank, o_rank))
+            return parsed
+        except Exception as exc:
+            logger.warning("Failed fetching Yahoo player ranks chunk: %s", exc)
+            return []
+
+    fetched_entries: list[tuple[str, int | None, int | None]] = []
+    with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+        for chunk_entries in executor.map(_fetch_chunk, chunks):
+            fetched_entries.extend(chunk_entries)
+
+    with _YAHOO_RANKS_LOCK:
+        if len(_YAHOO_RANKS_CACHE) > 2500:
+            _YAHOO_RANKS_CACHE.clear()
+        for pk, s_rank, o_rank in fetched_entries:
+            _YAHOO_RANKS_CACHE[(season_key, pk)] = (now, s_rank, o_rank)
+            result[pk] = (s_rank, o_rank)
+
+    return result
+
+
 def query_single_player_yahoo_positions(yahoo_query, player_name):
     if not yahoo_query or not player_name:
         return None
@@ -256,12 +393,12 @@ def get_yahoo_fa_info_map(yahoo_query):
 
     # Yahoo Fantasy REST API rejects batch requests larger than count=25.
     endpoints = [
-        f"https://fantasysports.yahooapis.com/fantasy/v2/league/{league_key}/players;status=A;sort={sort_mode};start={start};count=25"
+        f"https://fantasysports.yahooapis.com/fantasy/v2/league/{league_key}/players;status=A;sort={sort_mode};start={start};count=25;out=ranks"
         for sort_mode, total_limit in (("OR", 250), ("AR", 100))
         for start in range(0, total_limit, 25)
     ]
 
-    fa_info_map: dict[str, dict[str, str]] = {}
+    fa_info_map: dict[str, dict[str, object]] = {}
     for url in endpoints:
         try:
             resp = yahoo_query.get_response(url)
@@ -279,12 +416,16 @@ def get_yahoo_fa_info_map(yahoo_query):
                 for key, val in players_dict.items():
                     if key == "count" or not isinstance(val, dict):
                         continue
-                    p_name, p_status, p_positions = extract_player_from_yahoo_entry(val.get("player"))
+                    raw_player = val.get("player")
+                    p_name, p_status, p_positions = extract_player_from_yahoo_entry(raw_player)
                     if p_name:
+                        y_rank, y_orank = extract_yahoo_player_ranks(raw_player)
                         cleaned = clean_player_name(p_name)
                         entry_data = {
                             "status": str(p_status or "").upper().strip(),
                             "positions": str(p_positions or "").strip(),
+                            "yahoo_rank": y_rank,
+                            "yahoo_orank": y_orank,
                         }
                         fa_info_map[cleaned] = entry_data
                         fa_info_map[p_name] = entry_data

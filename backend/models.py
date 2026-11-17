@@ -2,7 +2,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.core.logging import logger
-from backend.services.yahoo_client import extract_player_from_yahoo_entry, resolve_league_key
+from backend.services.yahoo_client import (
+    extract_player_from_yahoo_entry,
+    get_yahoo_player_ranks_map,
+    resolve_league_key,
+)
 from backend.utils import clean_player_name
 
 
@@ -202,6 +206,31 @@ class FantasyLeague:
                     self.weekly_matchups[str(t1)] = t2
                     self.weekly_matchups[str(t2)] = t1
 
+            all_player_keys = []
+            for entry in _numbered_items(teams_container):
+                raw_team = entry.get("team") if isinstance(entry, dict) else entry
+                if not isinstance(raw_team, list) or not raw_team:
+                    continue
+                roster = _find_subresource_dict(raw_team[1:], "roster") or {}
+                roster_players_container = (
+                    roster.get("0", {}).get("players")
+                    if isinstance(roster.get("0"), dict)
+                    else roster.get("players")
+                )
+                for p_entry in _numbered_items(roster_players_container):
+                    raw_player = p_entry.get("player") if isinstance(p_entry, dict) else p_entry
+                    if not raw_player:
+                        continue
+                    p_meta = _merge_dict_entries(raw_player[0] if isinstance(raw_player, list) else raw_player)
+                    if p_meta.get("player_key"):
+                        all_player_keys.append(p_meta["player_key"])
+
+            yahoo_ranks_map = get_yahoo_player_ranks_map(
+                yahoo_query,
+                all_player_keys,
+                target_season=self.season,
+            )
+
             parsed_teams = []
             for entry in _numbered_items(teams_container):
                 raw_team = entry.get("team") if isinstance(entry, dict) else entry
@@ -244,6 +273,7 @@ class FantasyLeague:
                         extra_meta.get("selected_position") or p_meta.get("selected_position")
                     )
                     nba_team = p_meta.get("editorial_team_abbr")
+                    y_rank, y_orank = yahoo_ranks_map.get(p_meta.get("player_key"), (None, None))
 
                     players.append(
                         Player.from_fields(
@@ -254,6 +284,8 @@ class FantasyLeague:
                             selected_position=selected_position,
                             nba_team=nba_team,
                             player_stats=player_stats,
+                            yahoo_rank=y_rank,
+                            yahoo_orank=y_orank,
                         )
                     )
 
@@ -466,6 +498,8 @@ class Player:
         selected_position,
         nba_team,
         player_stats,
+        yahoo_rank=None,
+        yahoo_orank=None,
     ):
         obj = cls.__new__(cls)
         obj._assign_fields(
@@ -476,10 +510,24 @@ class Player:
             selected_position=selected_position,
             nba_team=nba_team,
             player_stats=player_stats,
+            yahoo_rank=yahoo_rank,
+            yahoo_orank=yahoo_orank,
         )
         return obj
 
-    def _assign_fields(self, *, full_name, photo_url, status, positions, selected_position, nba_team, player_stats):
+    def _assign_fields(
+        self,
+        *,
+        full_name,
+        photo_url,
+        status,
+        positions,
+        selected_position,
+        nba_team,
+        player_stats,
+        yahoo_rank=None,
+        yahoo_orank=None,
+    ):
         stats_map = player_stats or {}
         self.name = clean_player_name(full_name)
         self.photo_url = photo_url
@@ -487,6 +535,8 @@ class Player:
         self.positions = positions
         self.selected_position = selected_position
         self.nba_team = nba_team
+        self.yahoo_rank = yahoo_rank
+        self.yahoo_orank = yahoo_orank
         self.ema_stats = Stats((stats_map.get("ema") or {}).get(self.name, {}))
         self.ros_stats = Stats((stats_map.get("ros_rankings") or {}).get(self.name, {}))
         self.weekly_stats = Stats((stats_map.get("weekly_rankings") or {}).get(self.name, {}))
@@ -511,6 +561,8 @@ class Player:
             "positions": self.positions,
             "selected_position": self.selected_position,
             "nba_team": self.nba_team,
+            "yahoo_rank": self.yahoo_rank,
+            "yahoo_orank": self.yahoo_orank,
             "z_total": self.z_total,
             "ema_stats": self.ema_stats.to_dict(),
             "ros_stats": self.ros_stats.to_dict(),

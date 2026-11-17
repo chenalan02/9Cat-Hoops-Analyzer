@@ -22,6 +22,8 @@ export default function TradeSuggestionsPanel({
   setCatFilter,
   winWinOnly,
   setWinWinOnly,
+  yahooFairOnly,
+  setYahooFairOnly,
   streamOpenSpot,
   setStreamOpenSpot,
   otherTeams,
@@ -173,6 +175,10 @@ export default function TradeSuggestionsPanel({
             <label className="tf-check">
               <input type="checkbox" checked={winWinOnly} onChange={e => setWinWinOnly(e.target.checked)} />
               <span>🤝 Win-win only</span>
+            </label>
+            <label className="tf-check" style={{ marginLeft: 0 }} title="Filter out trades that look like a big reach on Yahoo rankings">
+              <input type="checkbox" checked={yahooFairOnly} onChange={e => setYahooFairOnly(e.target.checked)} />
+              <span>⚖️ Yahoo-fair only</span>
             </label>
           </div>
         </div>
