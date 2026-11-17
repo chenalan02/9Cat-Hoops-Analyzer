@@ -244,3 +244,24 @@
   font-weight: 700;
   color: var(--text-primary, #f0f4f8);
 }
+
+@media (max-width: 600px) {
+  .chart-container {
+    padding: 0.9rem;
+  }
+
+  .chart-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart-svg {
+    min-width: 480px;
+  }
+
+  .chart-tooltip {
+    width: 215px;
+    padding: 0.7rem 0.85rem;
+  }
+}
+

@@ -2598,4 +2598,39 @@
   color: var(--text-primary);
 }
 
+@media (max-width: 640px) {
+  .roster-games-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .matchup-vs {
+    gap: 1rem;
+  }
+
+  .opp-select {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .matchup-controls {
+    gap: 0.65rem;
+  }
+
+  .sc-efficiency-dual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sc-impact-row {
+    grid-template-columns: 74px 1fr auto;
+    gap: 0.35rem;
+  }
+
+  .streamer-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+
 

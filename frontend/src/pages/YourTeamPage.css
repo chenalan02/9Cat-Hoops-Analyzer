@@ -151,3 +151,27 @@
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+
+@media (max-width: 600px) {
+  .yt-controls-bar {
+    gap: 0.65rem;
+  }
+  .tab-bar {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .tab-btn {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .source-desc-pill {
+    display: flex;
+    width: 100%;
+  }
+}

@@ -1502,3 +1502,73 @@
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
 }
+
+@media (max-width: 640px) {
+  .trade-mode-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .trade-mode-btn {
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    text-align: center;
+  }
+
+  .trade-source-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .trade-source-desc {
+    text-align: left;
+  }
+
+  .cs-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .targets-grid,
+  .player-delta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .selector-filters {
+    flex-direction: column;
+  }
+
+  .selector-team-filter {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .tc-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tc-delta {
+    align-self: flex-start;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+
+  .tc-cats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .partner-card-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .partner-card-right {
+    align-items: flex-start;
+  }
+}
+

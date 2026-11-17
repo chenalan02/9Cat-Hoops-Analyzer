@@ -347,13 +347,39 @@
   color: var(--text-secondary);
 }
 
+.info-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .info-cta-btn {
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-decoration: none;
+}
+
+.footer-github-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.footer-github-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 600px) {
   .hero {
-    padding: 3.75rem 1rem 2.5rem;
+    padding: 2.75rem 0.85rem 2rem;
+  }
+  .hero-tagline {
+    font-size: 0.94rem;
+    margin-bottom: 1.5rem;
   }
   .search-bar {
     flex-direction: column;
@@ -361,11 +387,44 @@
   }
   .search-bar input {
     width: 100%;
+    padding: 13px 14px;
+    font-size: 0.9rem;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
   .search-btn {
     width: 100%;
+    padding: 13px 20px;
     justify-content: center;
     border-radius: 0 0 var(--radius-md) var(--radius-md);
+  }
+  .demo-banner {
+    padding: 0.85rem 0.95rem;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .demo-banner-actions {
+    width: 100%;
+  }
+  .sample-link-btn,
+  .sample-draft-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .active-session-pill {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    text-align: center;
+  }
+  .info-cta-bar {
+    padding: 1.15rem;
+  }
+  .info-cta-actions {
+    width: 100%;
+  }
+  .info-cta-btn {
+    width: 100%;
+    text-align: center;
   }
 }

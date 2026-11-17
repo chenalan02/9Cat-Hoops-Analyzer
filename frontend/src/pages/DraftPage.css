@@ -1294,7 +1294,22 @@
 
 @media (max-width: 600px) {
   .setup-row-2col,
-  .rec-cards-grid {
+  .rec-cards-grid,
+  .draft-sidebar {
     grid-template-columns: 1fr;
+  }
+
+  .roster-slots-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .board-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-box-wrapper {
+    width: 100%;
+    max-width: 100%;
   }
 }

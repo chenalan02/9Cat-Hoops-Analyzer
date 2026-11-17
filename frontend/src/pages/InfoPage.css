@@ -3,6 +3,42 @@
   flex-direction: column;
 }
 
+.info-github-row {
+  display: flex;
+  justify-content: center;
+  margin-top: -1rem;
+  margin-bottom: 2.25rem;
+}
+
+.info-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 999px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+
+.info-github-link:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
+}
+
+.info-github-repo {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+
 .info-block {
   margin-bottom: 2.75rem;
 }

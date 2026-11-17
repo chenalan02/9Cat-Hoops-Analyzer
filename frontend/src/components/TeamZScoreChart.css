@@ -211,3 +211,24 @@
 .z-tag-avg { color: #9ca3af; }
 .z-tag-poor { color: #f87171; }
 .z-tag-bad { color: #ef4444; }
+
+@media (max-width: 600px) {
+  .chart-container {
+    padding: 0.9rem;
+  }
+
+  .chart-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chart-svg {
+    min-width: 460px;
+  }
+
+  .chart-tooltip {
+    width: 220px;
+    padding: 0.75rem;
+  }
+}
+
