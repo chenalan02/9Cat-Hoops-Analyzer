@@ -39,19 +39,48 @@ export function getPlayerMu(player, cat, statsSource = 'ema') {
   return s[cat.muKey] ?? null;
 }
 
-// Delta-method variance approximation for ratio stats: Var(X/Y) ~= (mu_x^2 / mu_y^4) * Var(y) + (1 / mu_y^2) * Var(x)
+function nonneg(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+export function playerRatioMoments(muM, varM, muA, varA) {
+  const mm = nonneg(muM);
+  const vm = nonneg(varM);
+  const ma = nonneg(muA);
+  const va = nonneg(varA);
+  if (ma <= 0) return { effVarM: 0, varA: 0, covMA: 0 };
+  const p = Math.min(Math.max(mm / ma, 0), 1);
+  const binomFloor = p * p * va + ma * p * (1 - p);
+  const effVarM = Math.max(vm, binomFloor);
+  const covMA = p * va;
+  return { effVarM, varA: va, covMA };
+}
+
+export function ratioVariance(muM, effVarM, muA, varA, covMA) {
+  const mm = nonneg(muM);
+  const vm = nonneg(effVarM);
+  const ma = nonneg(muA);
+  const va = nonneg(varA);
+  const cov = nonneg(covMA);
+  if (ma <= 0) return 0;
+  const pBar = mm / ma;
+  const numerator = vm + pBar * pBar * va - 2 * pBar * cov;
+  return Math.max(numerator / (ma * ma), 0);
+}
+
+// Delta-method variance approximation for ratio stats incorporating conditional-Binomial Cov(M, A)
 export function getPlayerVar(player, cat, statsSource = 'ema') {
   const s = getPlayerStatsObject(player, statsSource);
   if (!s) return null;
-  if (cat.derived === 'fg') {
-    if (!s.mu_fga || s.mu_fga === 0) return null;
-    return (s.mu_fgm ** 2 / s.mu_fga ** 4) * (s.var_fga ?? 0)
-         + (1 / s.mu_fga ** 2) * (s.var_fgm ?? 0);
-  }
-  if (cat.derived === 'ft') {
-    if (!s.mu_fta || s.mu_fta === 0) return null;
-    return (s.mu_ftm ** 2 / s.mu_fta ** 4) * (s.var_fta ?? 0)
-         + (1 / s.mu_fta ** 2) * (s.var_ftm ?? 0);
+  if (cat.derived === 'fg' || cat.derived === 'ft') {
+    const mKey = cat.derived === 'fg' ? 'fgm' : 'ftm';
+    const aKey = cat.derived === 'fg' ? 'fga' : 'fta';
+    const ma = Number(s[`mu_${aKey}`]);
+    if (!ma || ma <= 0) return null;
+    const mm = Number(s[`mu_${mKey}`] ?? 0);
+    const { effVarM, varA, covMA } = playerRatioMoments(mm, s[`var_${mKey}`], ma, s[`var_${aKey}`]);
+    return ratioVariance(mm, effVarM, ma, varA, covMA);
   }
   return s[cat.varKey] ?? null;
 }
@@ -180,21 +209,26 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
   );
 
   let totalFGM = 0, totalFGA = 0, totalFTM = 0, totalFTA = 0;
-  let totalFGMVar = 0, totalFGAVar = 0, totalFTMVar = 0, totalFTAVar = 0;
+  let totalFGMVar = 0, totalFGAVar = 0, totalFGCov = 0;
+  let totalFTMVar = 0, totalFTAVar = 0, totalFTCov = 0;
 
   for (const player of activePlayers) {
     const s = getPlayerStatsObject(player, statsSource);
     if (!s) continue;
     const gp = s.mu_min > 0 ? projGames : 0;
     if (gp > 0) {
+      const fgM = playerRatioMoments(s.mu_fgm, s.var_fgm, s.mu_fga, s.var_fga);
+      const ftM = playerRatioMoments(s.mu_ftm, s.var_ftm, s.mu_fta, s.var_fta);
       totalFGM += (s.mu_fgm ?? 0) * gp;
       totalFGA += (s.mu_fga ?? 0) * gp;
       totalFTM += (s.mu_ftm ?? 0) * gp;
       totalFTA += (s.mu_fta ?? 0) * gp;
-      totalFGMVar += (s.var_fgm ?? 0) * gp;
-      totalFGAVar += (s.var_fga ?? 0) * gp;
-      totalFTMVar += (s.var_ftm ?? 0) * gp;
-      totalFTAVar += (s.var_fta ?? 0) * gp;
+      totalFGMVar += fgM.effVarM * gp;
+      totalFGAVar += fgM.varA * gp;
+      totalFGCov += fgM.covMA * gp;
+      totalFTMVar += ftM.effVarM * gp;
+      totalFTAVar += ftM.varA * gp;
+      totalFTCov += ftM.covMA * gp;
     }
   }
 
@@ -205,12 +239,12 @@ export function computeTeamWeeklyProjection(players, projGames = 3.5, statsSourc
     if (cat.derived === 'fg') {
       teamMu = totalFGA > 0 ? totalFGM / totalFGA : 0;
       teamVar = totalFGA > 0
-        ? (totalFGM ** 2 / totalFGA ** 4) * totalFGAVar + (1 / totalFGA ** 2) * totalFGMVar
+        ? ratioVariance(totalFGM, totalFGMVar, totalFGA, totalFGAVar, totalFGCov)
         : 0;
     } else if (cat.derived === 'ft') {
       teamMu = totalFTA > 0 ? totalFTM / totalFTA : 0;
       teamVar = totalFTA > 0
-        ? (totalFTM ** 2 / totalFTA ** 4) * totalFTAVar + (1 / totalFTA ** 2) * totalFTMVar
+        ? ratioVariance(totalFTM, totalFTMVar, totalFTA, totalFTAVar, totalFTCov)
         : 0;
     } else {
       for (const player of activePlayers) {

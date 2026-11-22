@@ -89,8 +89,46 @@ NBA_TEAM_ALIASES = {
 }
 
 VEC_MU_KEYS = ("pts", "reb", "ast", "stl", "blk", "tov", "fg3m", "fgm", "fga", "ftm", "fta")
+VEC_LEN = 24
 
 _SQRT2 = math.sqrt(2.0)
+
+
+def _nonneg(value) -> float:
+    try:
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) and parsed > 0.0 else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def player_ratio_moments(mu_m, var_m, mu_a, var_a) -> tuple[float, float, float]:
+    """Return (eff_var_m, var_a, cov_ma) for a player-game using conditional-Binomial covariance."""
+    mm = _nonneg(mu_m)
+    vm = _nonneg(var_m)
+    ma = _nonneg(mu_a)
+    va = _nonneg(var_a)
+    if ma <= 0.0:
+        return (0.0, 0.0, 0.0)
+    p = min(max(mm / ma, 0.0), 1.0)
+    binom_floor = (p ** 2) * va + ma * p * (1.0 - p)
+    eff_var_m = max(vm, binom_floor)
+    cov_ma = p * va
+    return (eff_var_m, va, cov_ma)
+
+
+def ratio_mean_and_var(mu_m, eff_var_m, mu_a, var_a, cov_ma) -> tuple[float, float]:
+    """Return (ratio_mean, delta_method_var) for M / A incorporating Cov(M, A)."""
+    mm = _nonneg(mu_m)
+    vm = _nonneg(eff_var_m)
+    ma = _nonneg(mu_a)
+    va = _nonneg(var_a)
+    cov = _nonneg(cov_ma)
+    if ma <= 0.0:
+        return (0.0, 0.0)
+    p_bar = mm / ma
+    numerator = vm + (p_bar ** 2) * va - 2.0 * p_bar * cov
+    return (p_bar, max(numerator / (ma ** 2), 0.0))
 
 
 def prob_positive(mu, var):
@@ -143,12 +181,22 @@ def get_safe_player_stats(player_info, stats_source):
 
 
 def stats_to_vec(p_stats_dict):
-    vec = np.zeros(22, dtype=np.float64)
+    vec = np.zeros(VEC_LEN, dtype=np.float64)
     if not p_stats_dict:
         return vec
     for idx, key in enumerate(VEC_MU_KEYS):
         vec[idx] = float(p_stats_dict.get(f"mu_{key}") or 0.0)
         vec[11 + idx] = max(0.0, float(p_stats_dict.get(f"var_{key}") or 0.0))
+    for m_idx, a_idx, cov_idx in ((7, 8, 22), (9, 10, 23)):
+        eff_vm, va, cov_ma = player_ratio_moments(
+            vec[m_idx],
+            vec[11 + m_idx],
+            vec[a_idx],
+            vec[11 + a_idx],
+        )
+        vec[11 + m_idx] = eff_vm
+        vec[11 + a_idx] = va
+        vec[cov_idx] = cov_ma
     return vec
 
 

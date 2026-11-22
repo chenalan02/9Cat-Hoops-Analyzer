@@ -16,7 +16,9 @@ from backend.services.stats_utils import (
     get_safe_player_stats,
     normalize_nba_team,
     parse_iso_date,
+    player_ratio_moments,
     prob_positive,
+    ratio_mean_and_var,
 )
 from backend.services.yahoo_client import get_live_team_stats, resolve_league_key
 
@@ -250,6 +252,9 @@ def matchup_analysis(
         "team1": {stat: {"mu": 0, "var": 0} for stat in all_dist_keys},
         "team2": {stat: {"mu": 0, "var": 0} for stat in all_dist_keys},
     }
+    for team_num in ("team1", "team2"):
+        for stat in _EFFICIENCY_STATS:
+            agg_dists[team_num][f"{stat}m"]["cov"] = 0.0
 
     for stat, value in scoreboard1.items():
         agg_dists["team1"][stat]["mu"] = value
@@ -278,10 +283,17 @@ def matchup_analysis(
                     agg_dists[team_num][stat]["mu"] += rem_frac * player_stats[f"mu_{stat}"]
                     agg_dists[team_num][stat]["var"] += rem_frac * player_stats[f"var_{stat}"]
                 for stat in _EFFICIENCY_STATS:
+                    eff_vm, va, cov_ma = player_ratio_moments(
+                        player_stats[f"mu_{stat}m"],
+                        player_stats[f"var_{stat}m"],
+                        player_stats[f"mu_{stat}a"],
+                        player_stats[f"var_{stat}a"],
+                    )
                     agg_dists[team_num][f"{stat}a"]["mu"] += rem_frac * player_stats[f"mu_{stat}a"]
-                    agg_dists[team_num][f"{stat}a"]["var"] += rem_frac * player_stats[f"var_{stat}a"]
+                    agg_dists[team_num][f"{stat}a"]["var"] += rem_frac * va
                     agg_dists[team_num][f"{stat}m"]["mu"] += rem_frac * player_stats[f"mu_{stat}m"]
-                    agg_dists[team_num][f"{stat}m"]["var"] += rem_frac * player_stats[f"var_{stat}m"]
+                    agg_dists[team_num][f"{stat}m"]["var"] += rem_frac * eff_vm
+                    agg_dists[team_num][f"{stat}m"]["cov"] += rem_frac * cov_ma
 
     win_probs = {}
     for cat in _COUNTING_STATS:
@@ -292,21 +304,23 @@ def matchup_analysis(
     for cat in _EFFICIENCY_STATS:
         t1_m = agg_dists["team1"][f"{cat}m"]["mu"]
         t1_mv = agg_dists["team1"][f"{cat}m"]["var"]
+        t1_cov = agg_dists["team1"][f"{cat}m"]["cov"]
         t1_a = agg_dists["team1"][f"{cat}a"]["mu"]
         t1_av = agg_dists["team1"][f"{cat}a"]["var"]
 
         t2_m = agg_dists["team2"][f"{cat}m"]["mu"]
         t2_mv = agg_dists["team2"][f"{cat}m"]["var"]
+        t2_cov = agg_dists["team2"][f"{cat}m"]["cov"]
         t2_a = agg_dists["team2"][f"{cat}a"]["mu"]
         t2_av = agg_dists["team2"][f"{cat}a"]["var"]
 
-        t1_eff_mu = t1_m / t1_a if t1_a > 0 else 0
-        t2_eff_mu = t2_m / t2_a if t2_a > 0 else 0
-        t1_eff_var = (t1_mv / (t1_a ** 2)) + (((t1_m ** 2) * t1_av) / (t1_a ** 4)) if t1_a > 0 else 0
-        t2_eff_var = (t2_mv / (t2_a ** 2)) + (((t2_m ** 2) * t2_av) / (t2_a ** 4)) if t2_a > 0 else 0
+        t1_eff_mu, t1_eff_var = ratio_mean_and_var(t1_m, t1_mv, t1_a, t1_av, t1_cov)
+        t2_eff_mu, t2_eff_var = ratio_mean_and_var(t2_m, t2_mv, t2_a, t2_av, t2_cov)
 
-        # Guard against floating-point underflow before square root in variance addition.
-        diff_eff_var = max(t1_eff_var + t2_eff_var, 0)
+        agg_dists["team1"][f"{cat}%"] = {"mu": t1_eff_mu, "var": t1_eff_var}
+        agg_dists["team2"][f"{cat}%"] = {"mu": t2_eff_mu, "var": t2_eff_var}
+
+        diff_eff_var = max(t1_eff_var + t2_eff_var, 0.0)
         win_probs[f"{cat}%"] = prob_positive(t1_eff_mu - t2_eff_mu, diff_eff_var)
 
     return {
@@ -416,11 +430,15 @@ def matchup_analysis_monte_carlo(
                     else:
                         sim_attempts = np.random.poisson(a_mu, size=n_sims)
 
-                    p_mean = raw_m_mu / raw_a_mu if raw_a_mu > 0 else 0
-                    if raw_a_mu > 0:
-                        p_var = max((raw_m_var / (raw_a_mu ** 2)) - (((raw_m_mu ** 2) * raw_a_var) / (raw_a_mu ** 4)), 1e-6)
+                    p_mean = min(max(raw_m_mu / raw_a_mu, 0.0), 1.0) if raw_a_mu > 0 else 0.0
+                    # Subtract Binomial sampling variance before extracting Beta shooting-skill variance.
+                    binom_var = raw_a_mu * p_mean * (1.0 - p_mean)
+                    denom = (raw_a_mu ** 2) + raw_a_var - raw_a_mu
+                    if raw_a_mu > 0 and denom > 0:
+                        excess_m_var = raw_m_var - ((p_mean ** 2) * raw_a_var) - binom_var
+                        p_var = excess_m_var / denom if excess_m_var > 0 else 0.0
                     else:
-                        p_var = 0
+                        p_var = 0.0
 
                     max_allowed_var = p_mean * (1 - p_mean)
                     if 0 < p_var < max_allowed_var:

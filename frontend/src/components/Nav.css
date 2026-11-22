@@ -46,7 +46,7 @@
   justify-self: center;
   display: flex;
   justify-content: center;
-  gap: 1.75rem;
+  gap: 1.25rem;
   list-style: none;
   flex-wrap: wrap;
 }
@@ -117,7 +117,7 @@
   color: #fff;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .nav {
     height: auto;
     min-height: 54px;

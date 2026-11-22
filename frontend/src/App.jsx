@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage.jsx';
 import { useTeamData } from './hooks/useTeamData.js';
 
 const YourTeamPage       = lazy(() => import('./pages/YourTeamPage.jsx'));
+const PlayerRankingsPage = lazy(() => import('./pages/PlayerRankingsPage.jsx'));
 const LeagueRankingsPage = lazy(() => import('./pages/LeagueRankingsPage.jsx'));
 const MatchupPage        = lazy(() => import('./pages/MatchupPage.jsx'));
 const StreamerPage       = lazy(() => import('./pages/StreamerPage.jsx'));
@@ -29,6 +30,7 @@ export default function App() {
           <Routes>
             <Route path="/"                element={<HomePage />} />
             <Route path="/your-team"       element={<YourTeamPage />} />
+            <Route path="/player-rankings" element={<PlayerRankingsPage />} />
             <Route path="/league-rankings" element={<LeagueRankingsPage />} />
             <Route path="/matchup"         element={<MatchupPage />} />
             <Route path="/streamers"       element={<StreamerPage />} />

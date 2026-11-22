@@ -9,3 +9,7 @@ def get_player_stats(request: Request) -> dict[str, Any] | None:
 
 def get_nba_schedule(request: Request) -> Any:
     return getattr(request.app.state, "nba_schedule", None)
+
+
+def get_game_logs(request: Request) -> dict[str, list[dict[str, Any]]] | None:
+    return getattr(request.app.state, "game_logs", None)

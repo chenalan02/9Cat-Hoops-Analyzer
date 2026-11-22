@@ -75,3 +75,12 @@
   font-weight: 900;
   font-size: 1rem;
 }
+
+.team-table-row-clickable {
+  cursor: pointer;
+}
+
+.team-table-row-clickable:hover .player-name-link {
+  color: var(--accent);
+  text-decoration: underline;
+}

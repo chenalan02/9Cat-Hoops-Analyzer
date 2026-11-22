@@ -11,11 +11,13 @@ import {
 } from '../utils/zScore.js';
 import { formatMu, formatZ, formatDelta } from '../utils/formatters.js';
 import SortIcon from './common/SortIcon.jsx';
+import PlayerGameLogModal from './PlayerGameLogModal.jsx';
 import './TeamTable.css';
 
 export default function TeamTable({ players, puntedCats, allTeams, statsSource = 'ema' }) {
   const [sortKey, setSortKey] = useState('rank');
   const [sortDir, setSortDir] = useState('asc');
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
 
   const activeCats = useMemo(
     () => CATEGORIES.filter(c => !puntedCats.has(c.key)),
@@ -189,7 +191,24 @@ export default function TeamTable({ players, puntedCats, allTeams, statsSource =
             const { symbol, cls } = formatDelta(delta);
 
             return (
-              <tr key={player.name}>
+              <tr
+                key={player.name}
+                className="team-table-row-clickable"
+                onClick={() => {
+                  const zScores = {};
+                  for (const cat of CATEGORIES) {
+                    zScores[cat.key] = getPlayerZScore(
+                      player,
+                      cat,
+                      statsSource,
+                      catStats?.[cat.key]?.mean,
+                      catStats?.[cat.key]?.std,
+                    );
+                  }
+                  setSelectedPlayer({ ...player, zScores, isMyTeam: true });
+                }}
+                title={`Click to view ${player.name}'s game logs & splits`}
+              >
                 <td style={{ textAlign: 'center', fontWeight: 800, whiteSpace: 'nowrap' }}>
                   <span className="rank-num">#{player.rank}</span>
                   {puntedCats.size > 0 && baseRank && (
@@ -204,7 +223,7 @@ export default function TeamTable({ players, puntedCats, allTeams, statsSource =
                 </td>
                 <td>
                   <div className="player-cell">
-                    <span className="player-name">{player.name}</span>
+                    <span className="player-name player-name-link">{player.name}</span>
                     {player.status && (
                       <span className={`status-tag ${['O', 'INJ', 'OUT', 'IL', 'IL+', 'IR', 'IR+'].includes(String(player.status).toUpperCase()) ? 'status-il' : 'status-q'}`}>
                         {player.status}
@@ -260,6 +279,14 @@ export default function TeamTable({ players, puntedCats, allTeams, statsSource =
           })}
         </tbody>
       </table>
+      {selectedPlayer && (
+        <PlayerGameLogModal
+          player={selectedPlayer}
+          statsSource={statsSource}
+          puntedCats={puntedCats}
+          onClose={() => setSelectedPlayer(null)}
+        />
+      )}
     </div>
   );
 }

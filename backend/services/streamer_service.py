@@ -16,6 +16,7 @@ from backend.services.stats_utils import (
     IR_SLOTS,
     OUT_TAGS,
     Q_TAGS,
+    VEC_LEN,
     VEC_MU_KEYS,
     canonical_cat,
     compute_player_rank_score,
@@ -25,6 +26,7 @@ from backend.services.stats_utils import (
     normalize_nba_team,
     parse_iso_date,
     prob_positive,
+    ratio_mean_and_var,
     resolve_player_ros,
     stats_to_vec,
     weighted_cat_delta,
@@ -437,13 +439,13 @@ def get_streamer_recommendations(
         }
 
     base_day_starters = {}
-    base_window_vec = np.zeros(22, dtype=np.float64)
+    base_window_vec = np.zeros(VEC_LEN, dtype=np.float64)
     base_total_starts = 0
     for d_str in date_strings:
         lineup = t1_lineups.get(d_str, {})
         players_with_game = t1_sched.get(d_str, {})
         starters = set()
-        d_vec = np.zeros(22, dtype=np.float64)
+        d_vec = np.zeros(VEC_LEN, dtype=np.float64)
         for slot, assigned_p in lineup.items():
             if slot in active_slots_set and assigned_p and assigned_p in players_with_game:
                 starters.add(assigned_p)
@@ -466,16 +468,16 @@ def get_streamer_recommendations(
 
     base_t1_mu_arr = {c: float(baseline_proj.get("team1", {}).get(c, {}).get("mu", 0.0)) for c in VEC_MU_KEYS}
     base_t1_var_arr = {c: float(baseline_proj.get("team1", {}).get(c, {}).get("var", 0.0)) for c in VEC_MU_KEYS}
+    base_t1_cov_arr = {cat: float(baseline_proj.get("team1", {}).get(f"{cat}m", {}).get("cov", 0.0)) for cat in ("fg", "ft")}
     base_t2_mu_arr = {c: float(baseline_proj.get("team2", {}).get(c, {}).get("mu", 0.0)) for c in VEC_MU_KEYS}
     base_t2_var_arr = {c: float(baseline_proj.get("team2", {}).get(c, {}).get("var", 0.0)) for c in VEC_MU_KEYS}
+    base_t2_cov_arr = {cat: float(baseline_proj.get("team2", {}).get(f"{cat}m", {}).get("cov", 0.0)) for cat in ("fg", "ft")}
 
     base_t2_eff = {}
     for cat in ("fg", "ft"):
         m2, a2 = base_t2_mu_arr[f"{cat}m"], base_t2_mu_arr[f"{cat}a"]
         mv2, av2 = base_t2_var_arr[f"{cat}m"], base_t2_var_arr[f"{cat}a"]
-        e2_mu = m2 / a2 if a2 > 0 else 0.0
-        e2_var = ((mv2 / (a2 ** 2)) + (((m2 ** 2) * av2) / (a2 ** 4))) if a2 > 0 else 0.0
-        base_t2_eff[cat] = (e2_mu, e2_var)
+        base_t2_eff[cat] = ratio_mean_and_var(m2, mv2, a2, av2, base_t2_cov_arr[cat])
 
     fa_prepared = []
     for item in top_fa_pool:
@@ -489,10 +491,12 @@ def get_streamer_recommendations(
 
         play_prob = 0.25 if cand_status == "DOUBTFUL" else (0.75 if (cand_status and cand_status in Q_TAGS) else 1.0)
         fa_vec = stats_to_vec(p_stats)
-        fa_contrib_vec = np.zeros(22, dtype=np.float64)
+        fa_contrib_vec = np.zeros(VEC_LEN, dtype=np.float64)
         fa_contrib_vec[:11] = play_prob * fa_vec[:11]
         # Include Bernoulli mixture variance p*(1-p)*mu^2 so questionable pickups carry realistic risk.
-        fa_contrib_vec[11:] = play_prob * fa_vec[11:] + play_prob * (1.0 - play_prob) * (fa_vec[:11] ** 2)
+        fa_contrib_vec[11:22] = play_prob * fa_vec[11:22] + play_prob * (1.0 - play_prob) * (fa_vec[:11] ** 2)
+        fa_contrib_vec[22] = play_prob * fa_vec[22] + play_prob * (1.0 - play_prob) * (fa_vec[7] * fa_vec[8])
+        fa_contrib_vec[23] = play_prob * fa_vec[23] + play_prob * (1.0 - play_prob) * (fa_vec[9] * fa_vec[10])
 
         raw_rank_score = compute_player_rank_score({"name": p_name}, p_stats, stats_source)
         fa_eff_rank_score = raw_rank_score * (0.85 if play_prob < 0.5 else (0.94 if play_prob < 1.0 else 1.0))
@@ -605,7 +609,7 @@ def get_streamer_recommendations(
             used_slots = {active_slots.index(s_name) for s_name, _ in assigns}
             open_idxs = [i for i in range(len(active_slots)) if i not in used_slots]
             starter_names = {d_metas[p_i]["name"] for _, p_i in assigns}
-            d_vec = np.zeros(22, dtype=np.float64)
+            d_vec = np.zeros(VEC_LEN, dtype=np.float64)
             min_r = float("inf")
             for _, p_i in assigns:
                 sn = d_metas[p_i]["name"]
@@ -641,7 +645,7 @@ def get_streamer_recommendations(
             all_game_dates = [d for d in date_strings if d in s_dates]
             replaced_starters_notes = []
 
-            after_window_vec = np.zeros(22, dtype=np.float64)
+            after_window_vec = np.zeros(VEC_LEN, dtype=np.float64)
             after_total_starts = 0
 
             for d_str in date_strings:
@@ -682,7 +686,7 @@ def get_streamer_recommendations(
                     }]
                     assigns = solve_day_lineup_matrix(combined, active_slots)
                     fa_in = False
-                    others_vec = np.zeros(22, dtype=np.float64)
+                    others_vec = np.zeros(VEC_LEN, dtype=np.float64)
                     others_names = set()
                     for _, p_i in assigns:
                         if p_i == fa_idx:
@@ -762,17 +766,24 @@ def get_streamer_recommendations(
             for eff_idx, cat in enumerate(("fg", "ft")):
                 m_idx = 7 + eff_idx * 2
                 a_idx = m_idx + 1
+                cov_idx = 22 + eff_idx
                 new_t1_m = max(0.0, base_t1_mu_arr[f"{cat}m"] + float(delta_vec[m_idx]))
-                new_t1_m_var = max(0.01, base_t1_var_arr[f"{cat}m"] + float(delta_vec[11 + m_idx]))
+                new_t1_m_var = max(0.0, base_t1_var_arr[f"{cat}m"] + float(delta_vec[11 + m_idx]))
                 new_t1_a = max(0.01, base_t1_mu_arr[f"{cat}a"] + float(delta_vec[a_idx]))
-                new_t1_a_var = max(0.01, base_t1_var_arr[f"{cat}a"] + float(delta_vec[11 + a_idx]))
+                new_t1_a_var = max(0.0, base_t1_var_arr[f"{cat}a"] + float(delta_vec[11 + a_idx]))
+                new_t1_cov = max(0.0, base_t1_cov_arr[cat] + float(delta_vec[cov_idx]))
 
-                new_t1_eff_mu = new_t1_m / new_t1_a
-                new_t1_eff_var = (new_t1_m_var / (new_t1_a ** 2)) + (((new_t1_m ** 2) * new_t1_a_var) / (new_t1_a ** 4))
+                new_t1_eff_mu, new_t1_eff_var = ratio_mean_and_var(
+                    new_t1_m,
+                    new_t1_m_var,
+                    new_t1_a,
+                    new_t1_a_var,
+                    new_t1_cov,
+                )
                 t2_eff_mu, t2_eff_var = base_t2_eff[cat]
 
                 diff_eff_mu = new_t1_eff_mu - t2_eff_mu
-                diff_eff_var = max(new_t1_eff_var + t2_eff_var, 0.00001)
+                diff_eff_var = max(new_t1_eff_var + t2_eff_var, 0.0)
 
                 cat_pct_key = f"{cat}%"
                 p_win = prob_positive(diff_eff_mu, diff_eff_var)

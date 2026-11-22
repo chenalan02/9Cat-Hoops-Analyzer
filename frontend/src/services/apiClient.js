@@ -77,3 +77,11 @@ export function searchFreeAgents(leagueId, body) {
 export function fetchDraftPool(limit = 350) {
   return requestJson(`/api/v1/draft/pool?limit=${encodeURIComponent(limit)}`);
 }
+
+export function fetchPlayerRankings() {
+  return requestJson('/api/v1/players/rankings');
+}
+
+export function fetchPlayerGameLogs(playerName) {
+  return requestJson(`/api/v1/players/${encodeURIComponent(playerName)}/game-logs`);
+}

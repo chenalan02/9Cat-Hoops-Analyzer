@@ -43,6 +43,14 @@ const PLATFORM_TOOLS = [
     requiresLeague: true,
   },
   {
+    path: '/player-rankings',
+    icon: '📋',
+    title: 'Player Rankings & Game Logs',
+    description:
+      'League-wide 9-category rankings with punt filters, roster highlighting, minutes trends, and game-by-game box score popups.',
+    requiresLeague: false,
+  },
+  {
     path: '/league-rankings',
     icon: '🏆',
     title: 'League Rankings',

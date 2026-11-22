@@ -11,7 +11,7 @@
 //   5. Trade partners are evaluated across all 9 categories by default (configurable
 //      via partnerCats), independent of your own punts.
 
-import { CATEGORIES, DB_Z_KEYS, getPlayerStatsObject, getPlayerMu } from './zScore.js';
+import { CATEGORIES, DB_Z_KEYS, getPlayerStatsObject, getPlayerMu, playerRatioMoments, ratioVariance } from './zScore.js';
 
 export const PROJ_GAMES = 3.5;
 
@@ -229,7 +229,7 @@ const num = v => {
 };
 
 function emptyTotals() {
-  const t = {};
+  const t = { cov_fg: 0, cov_ft: 0 };
   for (const k of STAT_KEYS) { t[k] = 0; t[`v_${k}`] = 0; }
   return t;
 }
@@ -243,6 +243,14 @@ export function playerContribution(player, source, games = PROJ_GAMES) {
     c[k] = num(s[`mu_${k}`]) * games;
     c[`v_${k}`] = num(s[`var_${k}`]) * games;
   }
+  const fgM = playerRatioMoments(s.mu_fgm, s.var_fgm, s.mu_fga, s.var_fga);
+  const ftM = playerRatioMoments(s.mu_ftm, s.var_ftm, s.mu_fta, s.var_fta);
+  c.v_fgm = fgM.effVarM * games;
+  c.v_fga = fgM.varA * games;
+  c.cov_fg = fgM.covMA * games;
+  c.v_ftm = ftM.effVarM * games;
+  c.v_fta = ftM.varA * games;
+  c.cov_ft = ftM.covMA * games;
   return c;
 }
 
@@ -252,6 +260,8 @@ function addInto(target, contrib, sign = 1) {
     target[k] += sign * contrib[k];
     target[`v_${k}`] += sign * contrib[`v_${k}`];
   }
+  target.cov_fg += sign * num(contrib.cov_fg);
+  target.cov_ft += sign * num(contrib.cov_ft);
   return target;
 }
 
@@ -264,12 +274,14 @@ export function distFromTotals(t) {
   const d = {};
   for (const cat of CATEGORIES) {
     if (cat.derived === 'fg' || cat.derived === 'ft') {
-      const m = cat.derived === 'fg' ? t.fgm : t.ftm;
-      const a = cat.derived === 'fg' ? t.fga : t.fta;
-      const vm = cat.derived === 'fg' ? t.v_fgm : t.v_ftm;
-      const va = cat.derived === 'fg' ? t.v_fga : t.v_fta;
+      const isFg = cat.derived === 'fg';
+      const m = isFg ? t.fgm : t.ftm;
+      const a = isFg ? t.fga : t.fta;
+      const vm = isFg ? t.v_fgm : t.v_ftm;
+      const va = isFg ? t.v_fga : t.v_fta;
+      const cov = isFg ? t.cov_fg : t.cov_ft;
       const mu = a > 0 ? m / a : 0;
-      let v = a > 0 ? (m * m / a ** 4) * Math.max(va, 0) + (1 / (a * a)) * Math.max(vm, 0) : 0;
+      let v = a > 0 ? ratioVariance(m, vm, a, va, cov) : 0;
       v = Math.max(v, 0.006 ** 2); // floor: ~0.6% weekly σ
       d[cat.key] = { mu, var: v, makes: m, attempts: a };
     } else {

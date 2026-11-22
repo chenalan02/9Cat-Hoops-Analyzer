@@ -1,4 +1,4 @@
-import { CATEGORIES } from './zScore.js';
+import { CATEGORIES, ratioVariance } from './zScore.js';
 import {
   readSessionJson,
   writeSessionJson,
@@ -55,15 +55,19 @@ export function setMatchupCache(storageKey, entryKey, data) {
   writeSessionJson(storageKey, stored);
 }
 
-// Delta-method variance approximation for FG%/FT% ratios:
-// Var(X/Y) ~= (mu_x^2 / mu_y^4) * Var(y) + (1 / mu_y^2) * Var(x)
+// Delta-method variance approximation for FG%/FT% ratios incorporating Cov(M, A).
 function derivedRatioDist(teamDist, madeKey, attKey) {
+  const pctKey = madeKey === 'fgm' ? 'fg%' : 'ft%';
+  const precomputed = teamDist?.[pctKey];
+  if (precomputed?.mu != null && precomputed?.var != null) {
+    return { mu: precomputed.mu, sigma: Math.sqrt(Math.max(precomputed.var, 0)) };
+  }
   const made = teamDist?.[madeKey];
   const att = teamDist?.[attKey];
   if (!(att?.mu > 0)) return { mu: 0, sigma: 0 };
   const mu = (made?.mu ?? 0) / att.mu;
-  const variance = ((made?.mu ?? 0) ** 2 / att.mu ** 4) * (att.var ?? 0)
-    + (1 / att.mu ** 2) * (made?.var ?? 0);
+  const cov = made?.cov ?? (mu * Math.max(att.var ?? 0, 0));
+  const variance = ratioVariance(made?.mu ?? 0, made?.var ?? 0, att.mu, att.var ?? 0, cov);
   return { mu, sigma: Math.sqrt(Math.max(variance, 0)) };
 }
 

@@ -12,9 +12,11 @@ def health_check(request: Request) -> dict:
     if not player_stats or nba_schedule is None:
         raise ServiceUnavailableError("Databricks caches are not initialized yet.")
 
+    game_logs = getattr(request.app.state, "game_logs", None) or {}
     return {
         "status": "ok",
         "databricks_loaded": True,
         "nba_games_loaded": len(nba_schedule),
+        "game_log_players_loaded": len(game_logs),
         "last_refreshed": getattr(request.app.state, "last_refreshed", None),
     }
