@@ -7,9 +7,15 @@ from backend.services.lineup_solver import (
     get_league_roster_slots,
     solve_optimal_lineup,
 )
+from backend.services.live_scoreboard import (
+    get_live_game_progress,
+    summarize_live_progress,
+)
 from backend.services.stats_utils import (
     build_inactive_players,
     get_safe_player_stats,
+    normalize_nba_team,
+    parse_iso_date,
     prob_positive,
 )
 from backend.services.yahoo_client import get_live_team_stats, resolve_league_key
@@ -18,7 +24,22 @@ _COUNTING_STATS = ("pts", "reb", "ast", "stl", "blk", "tov", "fg3m")
 _EFFICIENCY_STATS = ("fg", "ft")
 
 
-def build_accumulated_stats(scoreboard1, scoreboard2, any_live_games):
+def _get_game_remaining_fraction(
+    date_str: str,
+    date_start_str: str,
+    game_info: dict | None,
+    live_progress_by_date: dict | None,
+) -> float:
+    team_norm = (game_info or {}).get("team_normalized") or normalize_nba_team((game_info or {}).get("team"))
+    team_live = ((live_progress_by_date or {}).get(date_str) or {}).get(team_norm)
+    if team_live is not None:
+        return max(0.0, min(1.0, float(team_live.get("remaining_fraction", 1.0))))
+    if date_str < date_start_str:
+        return 0.0
+    return 1.0
+
+
+def build_accumulated_stats(scoreboard1, scoreboard2, any_live_games, live_adjustment=None):
     categories = [
         ("pts", True),
         ("reb", True),
@@ -74,8 +95,20 @@ def build_accumulated_stats(scoreboard1, scoreboard2, any_live_games):
             "leader": leader,
         }
 
-    has_data = any_live_games or any(v > 0 for v in scoreboard1.values()) or any(v > 0 for v in scoreboard2.values())
-    return {
+    has_live_adj = bool(
+        live_adjustment
+        and (
+            live_adjustment.get("in_progress_games", 0) > 0
+            or live_adjustment.get("final_games_today", 0) > 0
+        )
+    )
+    has_data = (
+        any_live_games
+        or has_live_adj
+        or any(v > 0 for v in scoreboard1.values())
+        or any(v > 0 for v in scoreboard2.values())
+    )
+    payload = {
         "team1": scoreboard1,
         "team2": scoreboard2,
         "categories": cat_comparison,
@@ -86,6 +119,9 @@ def build_accumulated_stats(scoreboard1, scoreboard2, any_live_games):
             "ties": ties,
         },
     }
+    if live_adjustment is not None:
+        payload["live_adjustment"] = live_adjustment
+    return payload
 
 
 def _fetch_live_matchup_context(
@@ -97,24 +133,64 @@ def _fetch_live_matchup_context(
     roster_positions,
     stats_source,
     nba_schedule,
+    live_progress_by_date=None,
 ):
+    date_start_str = parse_iso_date(date_start).isoformat()
+    league_key = resolve_league_key(yahoo_query)
+
+    if live_progress_by_date is None:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            f1 = executor.submit(get_live_team_stats, yahoo_query, team1["team_id"], week_num, league_key)
+            f2 = executor.submit(get_live_team_stats, yahoo_query, team2["team_id"], week_num, league_key)
+            f_espn = executor.submit(get_live_game_progress, date_start)
+            scoreboard1, live_games1 = f1.result()
+            scoreboard2, live_games2 = f2.result()
+            live_progress_by_date = f_espn.result()
+    else:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f1 = executor.submit(get_live_team_stats, yahoo_query, team1["team_id"], week_num, league_key)
+            f2 = executor.submit(get_live_team_stats, yahoo_query, team2["team_id"], week_num, league_key)
+            scoreboard1, live_games1 = f1.result()
+            scoreboard2, live_games2 = f2.result()
+
+    extra_dates = [
+        d_str
+        for d_str, day_map in (live_progress_by_date or {}).items()
+        if d_str < date_start_str
+        and any(
+            info.get("state") == "in" and float(info.get("remaining_fraction") or 0.0) > 0.0
+            for info in (day_map or {}).values()
+        )
+    ]
+
     optimal_lineups, team_schedules = solve_optimal_lineup(
-        team1, team2, date_start, roster_positions, stats_source, nba_schedule
+        team1,
+        team2,
+        date_start,
+        roster_positions,
+        stats_source,
+        nba_schedule,
+        extra_dates=extra_dates,
     )
     players_dict = {player["name"]: player for player in (team1["players"] + team2["players"])}
     active_slots, _ = get_league_roster_slots(roster_positions)
     active_slots_set = set(active_slots)
 
-    league_key = resolve_league_key(yahoo_query)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(get_live_team_stats, yahoo_query, team1["team_id"], week_num, league_key)
-        f2 = executor.submit(get_live_team_stats, yahoo_query, team2["team_id"], week_num, league_key)
-        scoreboard1, live_games1 = f1.result()
-        scoreboard2, live_games2 = f2.result()
-
-    any_live_games = live_games1 or live_games2
-    accumulated_stats = build_accumulated_stats(scoreboard1, scoreboard2, any_live_games)
-    player_games = calculate_weekly_player_games(team1, team2, date_start, nba_schedule)
+    live_adjustment = summarize_live_progress(live_progress_by_date, date_start_str)
+    any_live_games = live_games1 or live_games2 or bool(live_adjustment.get("in_progress_games", 0) > 0)
+    accumulated_stats = build_accumulated_stats(
+        scoreboard1,
+        scoreboard2,
+        any_live_games,
+        live_adjustment=live_adjustment,
+    )
+    player_games = calculate_weekly_player_games(
+        team1,
+        team2,
+        date_start,
+        nba_schedule,
+        live_progress_by_date=live_progress_by_date,
+    )
     inactive_players = build_inactive_players(team1, team2, player_games)
 
     return (
@@ -127,10 +203,23 @@ def _fetch_live_matchup_context(
         accumulated_stats,
         player_games,
         inactive_players,
+        live_progress_by_date,
+        live_adjustment,
+        date_start_str,
     )
 
 
-def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule):
+def matchup_analysis(
+    yahoo_query,
+    team1,
+    team2,
+    week_num,
+    date_start,
+    roster_positions,
+    stats_source,
+    nba_schedule,
+    live_progress_by_date=None,
+):
     (
         optimal_lineups,
         team_schedules,
@@ -141,8 +230,19 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
         accumulated_stats,
         player_games,
         inactive_players,
+        live_progress_by_date,
+        live_adjustment,
+        date_start_str,
     ) = _fetch_live_matchup_context(
-        yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule
+        yahoo_query,
+        team1,
+        team2,
+        week_num,
+        date_start,
+        roster_positions,
+        stats_source,
+        nba_schedule,
+        live_progress_by_date=live_progress_by_date,
     )
 
     all_dist_keys = list(_COUNTING_STATS) + ["fga", "fgm", "fta", "ftm"]
@@ -164,15 +264,24 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
                 if slot not in active_slots_set or player_name not in players_with_game:
                     continue
 
+                rem_frac = _get_game_remaining_fraction(
+                    date,
+                    date_start_str,
+                    players_with_game.get(player_name),
+                    live_progress_by_date,
+                )
+                if rem_frac <= 0.0:
+                    continue
+
                 player_stats = get_safe_player_stats(players_dict[player_name], stats_source)
                 for stat in _COUNTING_STATS:
-                    agg_dists[team_num][stat]["mu"] += player_stats[f"mu_{stat}"]
-                    agg_dists[team_num][stat]["var"] += player_stats[f"var_{stat}"]
+                    agg_dists[team_num][stat]["mu"] += rem_frac * player_stats[f"mu_{stat}"]
+                    agg_dists[team_num][stat]["var"] += rem_frac * player_stats[f"var_{stat}"]
                 for stat in _EFFICIENCY_STATS:
-                    agg_dists[team_num][f"{stat}a"]["mu"] += player_stats[f"mu_{stat}a"]
-                    agg_dists[team_num][f"{stat}a"]["var"] += player_stats[f"var_{stat}a"]
-                    agg_dists[team_num][f"{stat}m"]["mu"] += player_stats[f"mu_{stat}m"]
-                    agg_dists[team_num][f"{stat}m"]["var"] += player_stats[f"var_{stat}m"]
+                    agg_dists[team_num][f"{stat}a"]["mu"] += rem_frac * player_stats[f"mu_{stat}a"]
+                    agg_dists[team_num][f"{stat}a"]["var"] += rem_frac * player_stats[f"var_{stat}a"]
+                    agg_dists[team_num][f"{stat}m"]["mu"] += rem_frac * player_stats[f"mu_{stat}m"]
+                    agg_dists[team_num][f"{stat}m"]["var"] += rem_frac * player_stats[f"var_{stat}m"]
 
     win_probs = {}
     for cat in _COUNTING_STATS:
@@ -209,6 +318,8 @@ def matchup_analysis(yahoo_query, team1, team2, week_num, date_start, roster_pos
         "inactive_players": inactive_players,
         "accumulated_stats": accumulated_stats,
         "player_games": player_games,
+        "live_game_progress": live_progress_by_date,
+        "live_adjustment": live_adjustment,
     }
 
 
@@ -222,6 +333,7 @@ def matchup_analysis_monte_carlo(
     stats_source,
     nba_schedule,
     n_sims=10000,
+    live_progress_by_date=None,
 ):
     (
         optimal_lineups,
@@ -233,8 +345,19 @@ def matchup_analysis_monte_carlo(
         accumulated_stats,
         player_games,
         inactive_players,
+        live_progress_by_date,
+        live_adjustment,
+        date_start_str,
     ) = _fetch_live_matchup_context(
-        yahoo_query, team1, team2, week_num, date_start, roster_positions, stats_source, nba_schedule
+        yahoo_query,
+        team1,
+        team2,
+        week_num,
+        date_start,
+        roster_positions,
+        stats_source,
+        nba_schedule,
+        live_progress_by_date=live_progress_by_date,
     )
 
     sim_keys = list(_COUNTING_STATS) + [f"{s}a" for s in _EFFICIENCY_STATS] + [f"{s}m" for s in _EFFICIENCY_STATS]
@@ -252,11 +375,22 @@ def matchup_analysis_monte_carlo(
                 if slot not in active_slots_set or player_name not in players_with_game:
                     continue
 
+                rem_frac = _get_game_remaining_fraction(
+                    date,
+                    date_start_str,
+                    players_with_game.get(player_name),
+                    live_progress_by_date,
+                )
+                if rem_frac <= 0.0:
+                    continue
+
                 player_stats = get_safe_player_stats(players_dict[player_name], stats_source)
                 for stat in _COUNTING_STATS:
-                    mu = player_stats[f"mu_{stat}"]
-                    var = player_stats[f"var_{stat}"]
-                    if var > mu and mu > 0:
+                    mu = rem_frac * player_stats[f"mu_{stat}"]
+                    var = rem_frac * player_stats[f"var_{stat}"]
+                    if mu <= 0:
+                        continue
+                    if var > mu:
                         p = mu / var
                         n = (mu ** 2) / (var - mu)
                         player_sim = np.random.negative_binomial(n, p, size=n_sims)
@@ -265,21 +399,26 @@ def matchup_analysis_monte_carlo(
                     sim_agg[team][stat] += player_sim
 
                 for stat in _EFFICIENCY_STATS:
-                    a_mu = player_stats[f"mu_{stat}a"]
-                    a_var = player_stats[f"var_{stat}a"]
-                    m_mu = player_stats[f"mu_{stat}m"]
-                    m_var = player_stats[f"var_{stat}m"]
+                    raw_a_mu = player_stats[f"mu_{stat}a"]
+                    raw_a_var = player_stats[f"var_{stat}a"]
+                    raw_m_mu = player_stats[f"mu_{stat}m"]
+                    raw_m_var = player_stats[f"var_{stat}m"]
 
-                    if a_var > a_mu and a_mu > 0:
+                    a_mu = rem_frac * raw_a_mu
+                    a_var = rem_frac * raw_a_var
+                    if a_mu <= 0:
+                        continue
+
+                    if a_var > a_mu:
                         p_a = a_mu / a_var
                         n_a = (a_mu ** 2) / (a_var - a_mu)
                         sim_attempts = np.random.negative_binomial(n_a, p_a, size=n_sims)
                     else:
                         sim_attempts = np.random.poisson(a_mu, size=n_sims)
 
-                    p_mean = m_mu / a_mu if a_mu > 0 else 0
-                    if a_mu > 0:
-                        p_var = max((m_var / (a_mu ** 2)) - (((m_mu ** 2) * a_var) / (a_mu ** 4)), 1e-6)
+                    p_mean = raw_m_mu / raw_a_mu if raw_a_mu > 0 else 0
+                    if raw_a_mu > 0:
+                        p_var = max((raw_m_var / (raw_a_mu ** 2)) - (((raw_m_mu ** 2) * raw_a_var) / (raw_a_mu ** 4)), 1e-6)
                     else:
                         p_var = 0
 
@@ -325,4 +464,6 @@ def matchup_analysis_monte_carlo(
         "inactive_players": inactive_players,
         "accumulated_stats": accumulated_stats,
         "player_games": player_games,
+        "live_game_progress": live_progress_by_date,
+        "live_adjustment": live_adjustment,
     }

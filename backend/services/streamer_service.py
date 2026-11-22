@@ -176,6 +176,7 @@ def get_streamer_recommendations(
     pickup_mode="week",
     punted_cats=None,
     ros_stats_pool=None,
+    live_progress_by_date=None,
 ):
     pickup_mode = "today" if str(pickup_mode or "").lower().strip() == "today" else "week"
     punted_set = {canonical_cat(c) for c in (punted_cats or []) if canonical_cat(c)}
@@ -197,13 +198,27 @@ def get_streamer_recommendations(
         roster_positions=roster_positions,
         stats_source=stats_source,
         nba_schedule=nba_schedule,
+        live_progress_by_date=live_progress_by_date,
     )
 
+    live_progress_by_date = baseline.get("live_game_progress") or {}
     baseline_win_probs = baseline.get("win_probs", {})
     baseline_proj = baseline.get("analytical_projections") or baseline.get("agg_dists", {})
     optimal_lineups = baseline.get("optimal_lineups", {})
     team_schedules = baseline.get("team_schedules", {})
     player_games_t1 = baseline.get("player_games", {}).get("team1", {})
+
+    def get_team_rem_frac(d_str, team_norm):
+        team_live = (live_progress_by_date.get(d_str) or {}).get(team_norm)
+        if team_live is not None:
+            return max(0.0, min(1.0, float(team_live.get("remaining_fraction", 1.0))))
+        return 1.0
+
+    def is_team_locked_today(d_str, team_norm):
+        if d_str != today_str:
+            return False
+        team_live = (live_progress_by_date.get(d_str) or {}).get(team_norm)
+        return team_live is not None and team_live.get("state") != "pre"
 
     category_diagnostics = _compute_category_diagnostics(baseline_win_probs, baseline_proj, punted_set)
 
@@ -224,6 +239,11 @@ def get_streamer_recommendations(
     open_il_slots = max(0, len(il_slots) - occupied_il_slots)
     open_roster_spots = max(0, standard_capacity - len(t1_players)) if standard_capacity > 0 else 0
 
+    t1_team_by_name = {
+        p.get("name"): normalize_nba_team(p.get("nba_team"))
+        for p in t1_players
+    }
+
     def get_player_starts(player_name, dates_filter=None):
         target_dates = set(dates_filter if dates_filter is not None else window_date_strings)
         t1_lineups = optimal_lineups.get("team1", {})
@@ -235,6 +255,11 @@ def get_streamer_recommendations(
                     continue
                 players_with_game = t1_sched.get(d, {})
                 if player_name in players_with_game:
+                    p_team = t1_team_by_name.get(player_name) or normalize_nba_team(
+                        (players_with_game.get(player_name) or {}).get("team")
+                    )
+                    if is_team_locked_today(d, p_team):
+                        continue
                     for slot, p_in_slot in lineup.items():
                         if slot in active_slots_set and p_in_slot == player_name:
                             starts += 1
@@ -252,6 +277,8 @@ def get_streamer_recommendations(
     for day in week_dates:
         day_str = day.isoformat()
         for team_abbr in sched.get(day, {}):
+            if is_team_locked_today(day_str, team_abbr):
+                continue
             team_week_game_dates.setdefault(team_abbr, set()).add(day_str)
     team_game_dates = {
         team_abbr: (dates & window_date_set)
@@ -421,10 +448,21 @@ def get_streamer_recommendations(
             if slot in active_slots_set and assigned_p and assigned_p in players_with_game:
                 starters.add(assigned_p)
                 if assigned_p in t1_vec_by_name:
-                    d_vec += t1_vec_by_name[assigned_p]
+                    rem_frac = get_team_rem_frac(d_str, t1_team_by_name.get(assigned_p, ""))
+                    d_vec += rem_frac * t1_vec_by_name[assigned_p]
         base_day_starters[d_str] = starters
         base_window_vec += d_vec
         base_total_starts += len(starters)
+
+    locked_today_starters = {
+        pn
+        for pn in base_day_starters.get(today_str, set())
+        if is_team_locked_today(today_str, t1_team_by_name.get(pn, ""))
+    }
+    locked_t1_meta_by_name = {
+        pn: {**m, "rank_score": 100000.0 + float(m["rank_score"])}
+        for pn, m in t1_meta_by_name.items()
+    }
 
     base_t1_mu_arr = {c: float(baseline_proj.get("team1", {}).get(c, {}).get("mu", 0.0)) for c in VEC_MU_KEYS}
     base_t1_var_arr = {c: float(baseline_proj.get("team1", {}).get(c, {}).get("var", 0.0)) for c in VEC_MU_KEYS}
@@ -546,7 +584,18 @@ def get_streamer_recommendations(
             d_metas = []
             for p in t1_players:
                 pn = p.get("name")
-                if (drop_name and pn == drop_name) or pn not in players_with_game:
+                if pn not in players_with_game:
+                    continue
+                if d_str == today_str:
+                    p_team = t1_team_by_name.get(pn, "")
+                    if is_team_locked_today(d_str, p_team):
+                        # Locked starters remain fixed in today's Yahoo lineup even if dropped; locked bench cannot backfill.
+                        if pn in locked_today_starters:
+                            m = locked_t1_meta_by_name.get(pn)
+                            if m and m["is_eligible_any"]:
+                                d_metas.append(m)
+                        continue
+                if drop_name and pn == drop_name:
                     continue
                 m = t1_meta_by_name.get(pn)
                 if m and m["is_eligible_any"]:
@@ -560,7 +609,8 @@ def get_streamer_recommendations(
             min_r = float("inf")
             for _, p_i in assigns:
                 sn = d_metas[p_i]["name"]
-                d_vec += t1_vec_by_name[sn]
+                rem_frac = get_team_rem_frac(d_str, t1_team_by_name.get(sn, ""))
+                d_vec += rem_frac * t1_vec_by_name[sn]
                 if d_metas[p_i]["rank_score"] < min_r:
                     min_r = d_metas[p_i]["rank_score"]
 
@@ -600,10 +650,17 @@ def get_streamer_recommendations(
                     after_total_starts += len(without_drop_starters[d_str])
                     continue
 
+                fa_rem_frac = get_team_rem_frac(d_str, norm_team)
+                if fa_rem_frac <= 0.0:
+                    clashed_dates.append(d_str)
+                    after_window_vec += without_drop_vec[d_str]
+                    after_total_starts += len(without_drop_starters[d_str])
+                    continue
+
                 open_idxs = without_drop_open_slot_idxs[d_str]
                 if any(fa_mask[s_idx] for s_idx in open_idxs):
                     startable_dates.append(d_str)
-                    after_window_vec += without_drop_vec[d_str] + fa["fa_contrib_vec"]
+                    after_window_vec += without_drop_vec[d_str] + (fa_rem_frac * fa["fa_contrib_vec"])
                     after_total_starts += len(without_drop_starters[d_str]) + 1
                     continue
 
@@ -633,14 +690,15 @@ def get_streamer_recommendations(
                         else:
                             oname = combined[p_i]["name"]
                             others_names.add(oname)
-                            others_vec += t1_vec_by_name[oname]
+                            rem_frac = get_team_rem_frac(d_str, t1_team_by_name.get(oname, ""))
+                            others_vec += rem_frac * t1_vec_by_name[oname]
                     cached = (fa_in, others_vec, others_names)
                     day_solve_cache[cache_key] = cached
 
                 fa_in, others_vec, others_names = cached
                 if fa_in:
                     startable_dates.append(d_str)
-                    after_window_vec += others_vec + fa["fa_contrib_vec"]
+                    after_window_vec += others_vec + (fa_rem_frac * fa["fa_contrib_vec"])
                     after_total_starts += len(others_names) + 1
                     bumped = without_drop_starters[d_str] - others_names
                     if bumped:

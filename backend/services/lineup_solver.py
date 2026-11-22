@@ -51,20 +51,36 @@ def get_prepared_schedule(nba_schedule):
     return by_date
 
 
-def calculate_weekly_player_games(team1, team2, date_start, nba_schedule):
+def calculate_weekly_player_games(team1, team2, date_start, nba_schedule, live_progress_by_date=None):
     date_start_dt = parse_iso_date(date_start)
+    date_start_str = date_start_dt.isoformat()
     monday = date_start_dt - datetime.timedelta(days=date_start_dt.weekday())
     sunday = monday + datetime.timedelta(days=6)
 
     sched = get_prepared_schedule(nba_schedule)
+    live_map = live_progress_by_date or {}
     team_total_games = {}
     team_played_games = {}
+    team_live_info = {}
     for day in iter_dates(monday, sunday):
         day_teams = sched.get(day)
         if not day_teams:
             continue
-        is_played = day < date_start_dt
+        day_str = day.isoformat()
+        day_live_map = live_map.get(day_str) or {}
         for team_norm in day_teams:
+            team_live = day_live_map.get(team_norm)
+            if team_live is not None:
+                is_played = (
+                    team_live.get("state") == "post"
+                    or float(team_live.get("remaining_fraction", 1.0)) <= 0.0
+                )
+                if team_live.get("state") == "in" or (
+                    day_str == date_start_str and team_norm not in team_live_info
+                ):
+                    team_live_info[team_norm] = team_live
+            else:
+                is_played = day < date_start_dt
             team_total_games[team_norm] = team_total_games.get(team_norm, 0) + 1
             if is_played:
                 team_played_games[team_norm] = team_played_games.get(team_norm, 0) + 1
@@ -84,6 +100,8 @@ def calculate_weekly_player_games(team1, team2, date_start, nba_schedule):
             total = 0 if is_ir else raw_total
             played = 0 if is_ir else raw_played
             remaining = max(0, total - played)
+            live_entry = None if is_ir else team_live_info.get(nba_team_norm)
+            rem_frac = live_entry.get("remaining_fraction") if live_entry else None
             player_games[team_key][p_name] = {
                 "played": played,
                 "total": total,
@@ -94,6 +112,9 @@ def calculate_weekly_player_games(team1, team2, date_start, nba_schedule):
                 "status": player.get("status"),
                 "positions": player.get("positions"),
                 "selected_position": player.get("selected_position"),
+                "live_status": live_entry.get("state") if live_entry else None,
+                "live_detail": (live_entry.get("detail") or None) if live_entry else None,
+                "remaining_fraction": float(rem_frac) if rem_frac is not None else None,
             }
 
     return player_games
@@ -210,13 +231,16 @@ def solve_day_lineup_matrix(players_meta, active_slots):
     ]
 
 
-def solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule):
+def solve_optimal_lineup(team1, team2, date_start, roster_positions, stats_source, nba_schedule, extra_dates=None):
     team1_schedule = {}
     team2_schedule = {}
 
     date_start_dt = parse_iso_date(date_start)
     next_sunday = date_start_dt + datetime.timedelta(days=(6 - date_start_dt.weekday()))
-    window_dates = list(iter_dates(date_start_dt, next_sunday))
+    window_dates_set = set(iter_dates(date_start_dt, next_sunday))
+    if extra_dates:
+        window_dates_set.update(parse_iso_date(d) for d in extra_dates)
+    window_dates = sorted(window_dates_set)
 
     sched = get_prepared_schedule(nba_schedule)
 

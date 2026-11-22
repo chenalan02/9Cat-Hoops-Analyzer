@@ -19,12 +19,26 @@ function TeamGamesList({ teamName, teamKey, players, playerGames, totals }) {
                 <span className="player-sub-text">{p.nba_team} &middot; {p.positions}</span>
                 {p.status && <span className="badge badge-orange rg-status-tag">{p.status}</span>}
               </div>
-              <span
-                className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}
-                title={`${gInfo.played} played, ${gInfo.remaining} remaining (${gInfo.total} total this week)`}
-              >
-                {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} GP
-              </span>
+              <div className="rg-badges">
+                {gInfo.live_status === 'in' && (
+                  <span
+                    className="rg-live-badge"
+                    title={`Live: ${gInfo.live_detail || 'In Progress'}${
+                      gInfo.remaining_fraction != null
+                        ? ` (~${Math.round(gInfo.remaining_fraction * 100)}% remaining)`
+                        : ''
+                    }`}
+                  >
+                    ● {gInfo.live_detail || 'Live'}
+                  </span>
+                )}
+                <span
+                  className={`games-played-badge ${hasRemaining ? 'games-badge-active' : 'games-badge-done'}`}
+                  title={`${gInfo.played} played, ${gInfo.remaining} remaining (${gInfo.total} total this week)`}
+                >
+                  {gInfo.ratio || `${gInfo.played}/${gInfo.total}`} GP
+                </span>
+              </div>
             </div>
           );
         })}

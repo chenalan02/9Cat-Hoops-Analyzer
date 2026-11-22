@@ -53,6 +53,14 @@ export default function LiveScoreboardCard({ accumulatedStats, weekNum, myTeam, 
     return { main: pctStr, sub: splitStr || null };
   };
 
+  const liveAdj = accumulatedStats.live_adjustment;
+  const liveParts = [];
+  if (liveAdj?.in_progress_games > 0) liveParts.push(`${liveAdj.in_progress_games} in progress`);
+  if (liveAdj?.final_games_today > 0) liveParts.push(`${liveAdj.final_games_today} final`);
+  const liveAdjSuffix = liveAdj?.active && liveParts.length > 0
+    ? ` · Live-adjusted (${liveParts.join(', ')})`
+    : '';
+
   return (
     <div className="card live-scoreboard-card fade-up">
       <div className="live-scoreboard-header">
@@ -65,7 +73,7 @@ export default function LiveScoreboardCard({ accumulatedStats, weekNum, myTeam, 
               </span>
             )}
           </h3>
-          <span className="live-scoreboard-sub">Week {weekNum} accumulated totals</span>
+          <span className="live-scoreboard-sub">Week {weekNum} accumulated totals{liveAdjSuffix}</span>
         </div>
 
         <div className="live-score-display">
