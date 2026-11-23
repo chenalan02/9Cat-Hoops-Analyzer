@@ -1,5 +1,5 @@
 import { formatMu, formatPct } from '../../utils/formatters.js';
-import { formatCatMargin } from '../../utils/matchupHelpers.js';
+import { formatCatMargin, TOSSUP_MIN_PROB, TOSSUP_MAX_PROB } from '../../utils/matchupHelpers.js';
 import MatchupDistributionChart from '../MatchupDistributionChart.jsx';
 
 export default function CategoryOddsGrid({
@@ -17,7 +17,7 @@ export default function CategoryOddsGrid({
     <div className="category-analysis-workspace">
       <div className="odds-grid">
         {rows.map(({ cat, myMu, oppMu, winProb }) => {
-          const color = winProb >= 0.6 ? 'var(--accent)' : winProb >= 0.4 ? '#fbbf24' : '#e53935';
+          const color = winProb > TOSSUP_MAX_PROB ? 'var(--accent)' : winProb >= TOSSUP_MIN_PROB ? '#fbbf24' : '#e53935';
           const favorable = cat.key === 'TO' ? myMu < oppMu : myMu > oppMu;
           return (
             <div

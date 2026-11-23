@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { CATEGORIES } from '../utils/zScore.js';
 import { formatMu, formatPct } from '../utils/formatters.js';
+import { TOSSUP_MIN_PROB, TOSSUP_MAX_PROB } from '../utils/matchupHelpers.js';
 import './MatchupDistributionChart.css';
 
 const PDF = (x, mu, sigma) => {
@@ -92,8 +93,8 @@ export default function MatchupDistributionChart({
     };
   }, [my.mu, opp.mu, mySigma, oppSigma, plotWidth, plotHeight]);
 
-  const color = winProb >= 0.6 ? 'var(--accent, #10b981)'
-              : winProb >= 0.4 ? '#fbbf24'
+  const color = winProb > TOSSUP_MAX_PROB ? 'var(--accent, #10b981)'
+              : winProb >= TOSSUP_MIN_PROB ? '#fbbf24'
               : '#ef4444';
 
   const isTurnovers = category.key === 'TO';
@@ -182,7 +183,7 @@ export default function MatchupDistributionChart({
             {marginText}
           </div>
           <div className="dsb-sub">
-            {winProb >= 0.65 ? 'Strong Advantage' : winProb >= 0.45 && winProb <= 0.55 ? 'Toss-Up Swing Battle' : isFavorable ? 'Slight Edge' : 'Trailing'}
+            {winProb >= 0.65 ? 'Strong Advantage' : winProb >= TOSSUP_MIN_PROB && winProb <= TOSSUP_MAX_PROB ? 'Toss-Up Swing Battle' : isFavorable ? 'Slight Edge' : 'Trailing'}
           </div>
         </div>
       </div>

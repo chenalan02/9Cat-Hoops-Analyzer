@@ -233,6 +233,9 @@ export function parseMonteCarloResult(mcResult) {
   });
 }
 
+export const TOSSUP_MIN_PROB = 0.4;
+export const TOSSUP_MAX_PROB = 0.6;
+
 // Poisson-Binomial DP for P(wins >= ceil((N + 1) / 2)), where 5+ wins win a 9-cat week.
 export function computeMatchupWinStats(oddsList) {
   if (!oddsList || oddsList.length === 0) {
@@ -254,8 +257,8 @@ export function computeMatchupWinStats(oddsList) {
   for (const o of oddsList) {
     const p = Math.max(0, Math.min(1, o.winProb));
     expectedWins += p;
-    if (p >= 0.55) favoredCount++;
-    else if (p >= 0.45) tossupCount++;
+    if (p > TOSSUP_MAX_PROB) favoredCount++;
+    else if (p >= TOSSUP_MIN_PROB) tossupCount++;
 
     const nextDp = new Array(dp.length + 1).fill(0);
     for (let k = 0; k < dp.length; k++) {
