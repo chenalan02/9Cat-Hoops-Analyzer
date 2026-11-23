@@ -97,14 +97,6 @@ export default function IrActivationPanel({
         </div>
 
         <div className="ir-sim-header-right">
-          {irDelta && activeSimCount > 0 && (
-            <span
-              className={`ir-sim-delta-pill ${irDelta.delta >= 0 ? 'pos' : 'neg'}`}
-              title={`Expected category wins/wk: ${irDelta.beforeTotal.toFixed(2)} → ${irDelta.afterTotal.toFixed(2)} of ${irDelta.activeCount}`}
-            >
-              {signed(irDelta.delta)} cat wins/wk
-            </span>
-          )}
           {activeSimCount > 0 && (
             <button type="button" className="btn-ghost ir-sim-reset-btn" onClick={onReset}>
               Reset IR
@@ -342,6 +334,32 @@ export default function IrActivationPanel({
           >
             + Stash active/injured player on IR
           </button>
+        </div>
+      )}
+
+      {irDelta && activeSimCount > 0 && (
+        <div className="ir-sim-impact-box">
+          <div className="ir-sim-impact-main">
+            <span className="ir-sim-impact-label">IR Δ Expected Category Wins / Week</span>
+            <span className={`ir-sim-impact-delta ${irDelta.delta >= 0 ? 'z-elite' : 'z-bad'}`}>
+              {signed(irDelta.delta)}
+            </span>
+          </div>
+          <div className="ir-sim-impact-meta">
+            <span>
+              {irDelta.beforeTotal.toFixed(2)} → <strong>{irDelta.afterTotal.toFixed(2)}</strong> of {irDelta.activeCount} cats
+            </span>
+            <span className="impact-sub-sep">·</span>
+            <span title="Sum of punt-adjusted Z of activated/added players minus replaced/stashed players">
+              Punt-adj. Z: <strong className={irDelta.netZ >= 0 ? 'z-elite' : 'z-bad'}>{signed(irDelta.netZ)}</strong>
+              {' '}({signed(irDelta.inZ, 1)} in / {signed(irDelta.outZ, 1)} out)
+            </span>
+          </div>
+          {irDelta.posWarnings?.length > 0 && (
+            <div className="ir-sim-impact-pos-warn">
+              🧩 Positional coverage: {irDelta.posWarnings.map(w => w.text).join(' · ')}
+            </div>
+          )}
         </div>
       )}
     </div>

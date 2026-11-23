@@ -1576,25 +1576,6 @@
   flex-wrap: wrap;
 }
 
-.ir-sim-delta-pill {
-  font-size: 0.76rem;
-  font-weight: 800;
-  padding: 3px 10px;
-  border-radius: 999px;
-}
-
-.ir-sim-delta-pill.pos {
-  background: rgba(0, 230, 118, 0.14);
-  color: var(--accent);
-  border: 1px solid rgba(0, 230, 118, 0.35);
-}
-
-.ir-sim-delta-pill.neg {
-  background: rgba(248, 113, 113, 0.14);
-  color: #f87171;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-}
-
 .ir-sim-reset-btn,
 .ir-banner-reset {
   padding: 4px 10px;
@@ -1825,6 +1806,54 @@
   font-size: 0.74rem;
 }
 
+.ir-sim-impact-box {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 230, 118, 0.28);
+  background: rgba(255, 255, 255, 0.025);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ir-sim-impact-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ir-sim-impact-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.ir-sim-impact-delta {
+  font-size: 1.35rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.ir-sim-impact-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.ir-sim-impact-pos-warn {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: #fb923c;
+}
+
 .sp-ir-stash-tag {
   font-size: 0.6rem;
   font-weight: 800;
@@ -1915,6 +1944,11 @@
   .ir-sim-stash-select-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .ir-sim-impact-main {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .trade-mode-tabs {

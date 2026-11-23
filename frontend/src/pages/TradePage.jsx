@@ -21,6 +21,7 @@ import {
   applyIrSwapsToTeams,
   buildTradeContext,
   evaluateTrade,
+  comparePositionImpact,
   categoryRanks,
   computeSellCandidates,
   computeTradeTargets,
@@ -58,7 +59,6 @@ export default function TradePage() {
   const [hideOutFas, setHideOutFas] = useState(true);
   const [irSwapsMap, setIrSwapsMap] = useState({});
   const [irStashes, setIrStashes] = useState([]);
-  const [compareVsRaw, setCompareVsRaw] = useState(false);
 
   const togglePunt = key => setPuntedCats(prev => {
     const next = new Set(prev);
@@ -124,7 +124,6 @@ export default function TradePage() {
   useEffect(() => {
     setIrSwapsMap({});
     setIrStashes([]);
-    setCompareVsRaw(false);
   }, [myTeamId]);
 
   const rawCtx = useMemo(() => {
@@ -367,7 +366,6 @@ export default function TradePage() {
       .filter(Boolean);
     setIrSwapsMap({});
     setIrStashes([]);
-    setCompareVsRaw(false);
     if (stashFaNames.length) {
       setPlayersOut(prev => {
         const next = new Set(prev);
@@ -520,14 +518,32 @@ export default function TradePage() {
   const baseWins = ctx.baseWins.get(myTeamId);
   const rawWins = rawCtx ? rawCtx.baseWins.get(myTeamId) : null;
   const rawRanks = rawCtx ? categoryRanks(myTeamId, rawCtx.distById) : null;
-  const irDelta = appliedIrSwaps.length > 0 && rawWins
-    ? {
-        delta: baseWins.total - rawWins.total,
-        beforeTotal: rawWins.total,
-        afterTotal: baseWins.total,
-        activeCount: activeCats.size,
-      }
-    : null;
+  let irDelta = null;
+  if (appliedIrSwaps.length > 0 && rawWins) {
+    const inZ = appliedIrSwaps
+      .map(s => s.irPlayer)
+      .filter(Boolean)
+      .reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    const outZ = appliedIrSwaps
+      .map(s => s.replacePlayer)
+      .filter(Boolean)
+      .reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    const rawTeam = rawCtx.teamById.get(myTeamId);
+    const effTeam = ctx.teamById.get(myTeamId);
+    const posWarnings = (rawTeam && effTeam)
+      ? comparePositionImpact(rawTeam.players, effTeam.players, ctx.rosterPositions)
+      : [];
+    irDelta = {
+      delta: baseWins.total - rawWins.total,
+      beforeTotal: rawWins.total,
+      afterTotal: baseWins.total,
+      activeCount: activeCats.size,
+      inZ,
+      outZ,
+      netZ: inZ - outZ,
+      posWarnings,
+    };
+  }
   const numTeams = leagueData.teams.length;
   const activeCount = activeCats.size;
   const sourceMeta = SOURCE_OPTIONS.find(s => s.key === statsSource);
@@ -695,11 +711,6 @@ export default function TradePage() {
               partnerActiveCats={partnerActiveCats}
               onTogglePartnerPunt={togglePartnerPunt}
               appliedIrSwaps={appliedIrSwaps}
-              rawCtx={rawCtx}
-              rawWins={rawWins}
-              rawRanks={rawRanks}
-              compareVsRaw={compareVsRaw}
-              setCompareVsRaw={setCompareVsRaw}
               onResetIr={handleResetIr}
             />
           </div>
