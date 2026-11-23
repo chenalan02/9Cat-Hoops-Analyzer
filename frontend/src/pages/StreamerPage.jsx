@@ -28,7 +28,7 @@ import {
 import './MatchupPage.css';
 
 export default function StreamerPage() {
-  const { myTeam, leagueData, loading, refreshTeam } = useContext(TeamDataContext);
+  const { myTeam, leagueData, loading, refreshTeam, matchupPrefetching, matchupPrefetchTick } = useContext(TeamDataContext);
   const navigate = useNavigate();
 
   const opponents = useMemo(
@@ -116,7 +116,7 @@ export default function StreamerPage() {
 
   const matchupAnalysisData = useMemo(
     () => (matchupCacheKey ? getCachedAnalysis(matchupCacheKey) : null),
-    [matchupCacheKey]
+    [matchupCacheKey, matchupPrefetchTick]
   );
 
   const hasRunMatchupAnalyzer = useMemo(() => {
@@ -126,7 +126,7 @@ export default function StreamerPage() {
       return true;
     }
     return hasAnyCachedAnalysisForTeam(leagueData?.league_id, myTeam?.team_id);
-  }, [matchupAnalysisData, leagueData?.league_id, myTeam?.team_id]);
+  }, [matchupAnalysisData, leagueData?.league_id, myTeam?.team_id, matchupPrefetchTick]);
 
   const localRosterMeta = useMemo(() => {
     if (!myTeam) return { openSlots: 0, activeRoster: [] };
@@ -411,6 +411,9 @@ export default function StreamerPage() {
   }
 
   if (!hasRunMatchupAnalyzer) {
+    if (matchupPrefetching) {
+      return <LoadingView message="Running matchup analysis…" />;
+    }
     return (
       <div className="page-wrapper center-content fade-up">
         <div className="card empty-state" style={{ maxWidth: '540px', padding: '3rem 2rem', textAlign: 'center' }}>

@@ -211,42 +211,17 @@ def _fetch_live_matchup_context(
     )
 
 
-def matchup_analysis(
-    yahoo_query,
-    team1,
-    team2,
-    week_num,
-    date_start,
-    roster_positions,
+def _compute_analytical_result(
+    optimal_lineups,
+    team_schedules,
+    players_dict,
+    active_slots_set,
+    scoreboard1,
+    scoreboard2,
+    live_progress_by_date,
+    date_start_str,
     stats_source,
-    nba_schedule,
-    live_progress_by_date=None,
 ):
-    (
-        optimal_lineups,
-        team_schedules,
-        players_dict,
-        active_slots_set,
-        scoreboard1,
-        scoreboard2,
-        accumulated_stats,
-        player_games,
-        inactive_players,
-        live_progress_by_date,
-        live_adjustment,
-        date_start_str,
-    ) = _fetch_live_matchup_context(
-        yahoo_query,
-        team1,
-        team2,
-        week_num,
-        date_start,
-        roster_positions,
-        stats_source,
-        nba_schedule,
-        live_progress_by_date=live_progress_by_date,
-    )
-
     all_dist_keys = list(_COUNTING_STATS) + ["fga", "fgm", "fta", "ftm"]
     agg_dists = {
         "team1": {stat: {"mu": 0, "var": 0} for stat in all_dist_keys},
@@ -323,57 +298,21 @@ def matchup_analysis(
         diff_eff_var = max(t1_eff_var + t2_eff_var, 0.0)
         win_probs[f"{cat}%"] = prob_positive(t1_eff_mu - t2_eff_mu, diff_eff_var)
 
-    return {
-        "win_probs": win_probs,
-        "agg_dists": agg_dists,
-        "analytical_projections": agg_dists,
-        "optimal_lineups": optimal_lineups,
-        "team_schedules": team_schedules,
-        "inactive_players": inactive_players,
-        "accumulated_stats": accumulated_stats,
-        "player_games": player_games,
-        "live_game_progress": live_progress_by_date,
-        "live_adjustment": live_adjustment,
-    }
+    return win_probs, agg_dists
 
 
-def matchup_analysis_monte_carlo(
-    yahoo_query,
-    team1,
-    team2,
-    week_num,
-    date_start,
-    roster_positions,
+def _compute_monte_carlo_result(
+    optimal_lineups,
+    team_schedules,
+    players_dict,
+    active_slots_set,
+    scoreboard1,
+    scoreboard2,
+    live_progress_by_date,
+    date_start_str,
     stats_source,
-    nba_schedule,
     n_sims=10000,
-    live_progress_by_date=None,
 ):
-    (
-        optimal_lineups,
-        team_schedules,
-        players_dict,
-        active_slots_set,
-        scoreboard1,
-        scoreboard2,
-        accumulated_stats,
-        player_games,
-        inactive_players,
-        live_progress_by_date,
-        live_adjustment,
-        date_start_str,
-    ) = _fetch_live_matchup_context(
-        yahoo_query,
-        team1,
-        team2,
-        week_num,
-        date_start,
-        roster_positions,
-        stats_source,
-        nba_schedule,
-        live_progress_by_date=live_progress_by_date,
-    )
-
     sim_keys = list(_COUNTING_STATS) + [f"{s}a" for s in _EFFICIENCY_STATS] + [f"{s}m" for s in _EFFICIENCY_STATS]
     base_scores = {"team1": dict(scoreboard1), "team2": dict(scoreboard2)}
     sim_agg = {
@@ -475,6 +414,142 @@ def matchup_analysis_monte_carlo(
         team: {cat: float(np.mean(sim_agg[team][cat])) for cat in sim_keys}
         for team in ("team1", "team2")
     }
+    return win_pcts, sim_avg
+
+
+def matchup_analysis(
+    yahoo_query,
+    team1,
+    team2,
+    week_num,
+    date_start,
+    roster_positions,
+    stats_source,
+    nba_schedule,
+    live_progress_by_date=None,
+    include_monte_carlo=False,
+    n_sims=10000,
+):
+    (
+        optimal_lineups,
+        team_schedules,
+        players_dict,
+        active_slots_set,
+        scoreboard1,
+        scoreboard2,
+        accumulated_stats,
+        player_games,
+        inactive_players,
+        live_progress_by_date,
+        live_adjustment,
+        date_start_str,
+    ) = _fetch_live_matchup_context(
+        yahoo_query,
+        team1,
+        team2,
+        week_num,
+        date_start,
+        roster_positions,
+        stats_source,
+        nba_schedule,
+        live_progress_by_date=live_progress_by_date,
+    )
+
+    win_probs, agg_dists = _compute_analytical_result(
+        optimal_lineups,
+        team_schedules,
+        players_dict,
+        active_slots_set,
+        scoreboard1,
+        scoreboard2,
+        live_progress_by_date,
+        date_start_str,
+        stats_source,
+    )
+
+    result = {
+        "win_probs": win_probs,
+        "agg_dists": agg_dists,
+        "analytical_projections": agg_dists,
+        "optimal_lineups": optimal_lineups,
+        "team_schedules": team_schedules,
+        "inactive_players": inactive_players,
+        "accumulated_stats": accumulated_stats,
+        "player_games": player_games,
+        "live_game_progress": live_progress_by_date,
+        "live_adjustment": live_adjustment,
+    }
+
+    if include_monte_carlo:
+        mc_win_pcts, mc_sim_avg = _compute_monte_carlo_result(
+            optimal_lineups,
+            team_schedules,
+            players_dict,
+            active_slots_set,
+            scoreboard1,
+            scoreboard2,
+            live_progress_by_date,
+            date_start_str,
+            stats_source,
+            n_sims=n_sims,
+        )
+        result["monte_carlo"] = {
+            "win_pcts": mc_win_pcts,
+            "sim_avg": mc_sim_avg,
+        }
+
+    return result
+
+
+def matchup_analysis_monte_carlo(
+    yahoo_query,
+    team1,
+    team2,
+    week_num,
+    date_start,
+    roster_positions,
+    stats_source,
+    nba_schedule,
+    n_sims=10000,
+    live_progress_by_date=None,
+):
+    (
+        optimal_lineups,
+        team_schedules,
+        players_dict,
+        active_slots_set,
+        scoreboard1,
+        scoreboard2,
+        accumulated_stats,
+        player_games,
+        inactive_players,
+        live_progress_by_date,
+        live_adjustment,
+        date_start_str,
+    ) = _fetch_live_matchup_context(
+        yahoo_query,
+        team1,
+        team2,
+        week_num,
+        date_start,
+        roster_positions,
+        stats_source,
+        nba_schedule,
+        live_progress_by_date=live_progress_by_date,
+    )
+
+    win_pcts, sim_avg = _compute_monte_carlo_result(
+        optimal_lineups,
+        team_schedules,
+        players_dict,
+        active_slots_set,
+        scoreboard1,
+        scoreboard2,
+        live_progress_by_date,
+        date_start_str,
+        stats_source,
+        n_sims=n_sims,
+    )
 
     return {
         "win_pcts": win_pcts,

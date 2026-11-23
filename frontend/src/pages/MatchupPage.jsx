@@ -1,7 +1,6 @@
 import { useState, useMemo, useContext, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TeamDataContext } from '../App.jsx';
-import { fetchMatchupProjection } from '../services/apiClient.js';
 import { readSessionString, writeSessionString, todayLocalDateString } from '../services/storageCache.js';
 import YahooRefreshButton from '../components/common/YahooRefreshButton.jsx';
 import { LoadingView, EmptyState } from '../components/common/PageStateGuard.jsx';
@@ -18,8 +17,9 @@ import {
   MATCHUP_WEEK_STORAGE_KEY,
   MATCHUP_TAB_STORAGE_KEY,
   MATCHUP_HAS_RUN_KEY,
+  buildMatchupCacheKey,
   getMatchupCache,
-  setMatchupCache,
+  runMatchupProjection,
   parseAnalysisResult,
   parseMonteCarloResult,
   computeMatchupWinStats,
@@ -30,7 +30,7 @@ const IR_SLOTS = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
 const INJURY_STATUSES = new Set(['O', 'INJ', 'IL', 'IL+', 'OUT', 'GTD']);
 
 export default function MatchupPage() {
-  const { myTeam, selectMyTeam, leagueData, loading, refreshTeam } = useContext(TeamDataContext);
+  const { myTeam, selectMyTeam, leagueData, loading, refreshTeam, matchupPrefetchTick } = useContext(TeamDataContext);
   const navigate = useNavigate();
 
   const opponents = useMemo(
@@ -94,13 +94,12 @@ export default function MatchupPage() {
   }, []);
 
   const getCacheKey = useCallback((t1Id, t2Id, w, d) => {
-    const lId = leagueData?.league_id || '';
-    return `${lId}-${t1Id}-${t2Id}-${w}-${d}`;
+    return buildMatchupCacheKey(leagueData?.league_id, t1Id, t2Id, w, d);
   }, [leagueData?.league_id]);
 
   const [analysisResult, setAnalysisResult] = useState(() => {
     if (!myTeam || !oppTeamId) return null;
-    const key = `${leagueData?.league_id || ''}-${myTeam.team_id}-${oppTeamId}-${weekNum}-${dateStart}`;
+    const key = buildMatchupCacheKey(leagueData?.league_id, myTeam.team_id, oppTeamId, weekNum, dateStart);
     return getMatchupCache(MATCHUP_CACHE_STORAGE_KEY, key);
   });
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -108,53 +107,42 @@ export default function MatchupPage() {
 
   const [mcResult, setMcResult] = useState(() => {
     if (!myTeam || !oppTeamId) return null;
-    const key = `${leagueData?.league_id || ''}-${myTeam.team_id}-${oppTeamId}-${weekNum}-${dateStart}`;
+    const key = buildMatchupCacheKey(leagueData?.league_id, myTeam.team_id, oppTeamId, weekNum, dateStart);
     return getMatchupCache(MC_CACHE_STORAGE_KEY, key);
   });
   const [mcLoading, setMcLoading] = useState(false);
 
   const hasAnalysisData = !analysisLoading && Boolean(analysisResult || mcResult);
-  const abortControllerRef = useRef(null);
+  const requestSeqRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+      isMountedRef.current = false;
+      requestSeqRef.current += 1;
     };
   }, []);
 
-  const buildRequestBody = useCallback((monteCarlo) => {
-    if (!myTeam || !oppTeam || !leagueData) return null;
-    return {
-      team1: myTeam,
-      team2: oppTeam,
-      date_start: dateStart,
-      roster_positions: leagueData.roster_positions ?? null,
-      stats_source: 'weekly_stats',
-      monte_carlo: monteCarlo,
-    };
-  }, [myTeam, oppTeam, leagueData, dateStart]);
-
   const fetchAnalysis = useCallback(async (forceRefresh = false) => {
-    const body = buildRequestBody(false);
-    if (!body) return;
+    if (!leagueData?.league_id || !myTeam || !oppTeam) return;
 
     const cacheKey = getCacheKey(myTeam.team_id, oppTeam.team_id, weekNum, dateStart);
     const cachedAnalysis = getMatchupCache(MATCHUP_CACHE_STORAGE_KEY, cacheKey);
     const cachedMc = getMatchupCache(MC_CACHE_STORAGE_KEY, cacheKey);
 
-    if (!forceRefresh && cachedAnalysis) {
+    if (!forceRefresh && cachedAnalysis && cachedMc) {
       setAnalysisResult(cachedAnalysis);
-      setMcResult(cachedMc ?? null);
+      setMcResult(cachedMc);
       setAnalysisError(null);
       setAnalysisLoading(false);
+      setMcLoading(false);
       return;
     }
 
-    if (abortControllerRef.current) abortControllerRef.current.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
+    const reqSeq = ++requestSeqRef.current;
     setAnalysisLoading(true);
+    setMcLoading(true);
     setAnalysisError(null);
     if (forceRefresh) {
       setAnalysisResult(null);
@@ -162,46 +150,34 @@ export default function MatchupPage() {
     }
 
     try {
-      const data = await fetchMatchupProjection(leagueData.league_id, weekNum, body, controller.signal);
-      setMatchupCache(MATCHUP_CACHE_STORAGE_KEY, cacheKey, data);
-      setAnalysisResult(data);
+      const res = await runMatchupProjection({
+        leagueId: leagueData.league_id,
+        weekNum,
+        dateStart,
+        myTeam,
+        oppTeam,
+        rosterPositions: leagueData.roster_positions ?? null,
+        forceRefresh,
+      });
+      if (!isMountedRef.current || requestSeqRef.current !== reqSeq || !res) return;
+      setAnalysisResult(res.analysis);
+      setMcResult(res.mc ?? null);
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (!isMountedRef.current || requestSeqRef.current !== reqSeq) return;
       setAnalysisError(err.message || 'Failed to fetch matchup analysis');
     } finally {
-      if (abortControllerRef.current === controller) {
+      if (isMountedRef.current && requestSeqRef.current === reqSeq) {
         setAnalysisLoading(false);
+        setMcLoading(false);
       }
     }
-  }, [buildRequestBody, getCacheKey, leagueData?.league_id, myTeam?.team_id, oppTeam?.team_id, weekNum, dateStart]);
+  }, [getCacheKey, leagueData, myTeam, oppTeam, weekNum, dateStart]);
 
   useEffect(() => {
-    if (oppTeam) fetchAnalysis(false);
-  }, [oppTeam?.team_id, weekNum]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const runMonteCarlo = useCallback(async (forceRefresh = false) => {
-    handleTabChange('monte-carlo');
-    const body = buildRequestBody(true);
-    if (!body) return;
-
-    const cacheKey = getCacheKey(myTeam.team_id, oppTeam.team_id, weekNum, dateStart);
-    const cachedMc = getMatchupCache(MC_CACHE_STORAGE_KEY, cacheKey);
-    if (!forceRefresh && cachedMc) {
-      setMcResult(cachedMc);
-      return;
+    if (leagueData?.league_id && myTeam && oppTeam) {
+      fetchAnalysis(false);
     }
-
-    setMcLoading(true);
-    try {
-      const data = await fetchMatchupProjection(leagueData.league_id, weekNum, body);
-      setMatchupCache(MC_CACHE_STORAGE_KEY, cacheKey, data);
-      setMcResult(data);
-    } catch (err) {
-      setAnalysisError(err.message || 'Failed to run Monte Carlo simulation');
-    } finally {
-      setMcLoading(false);
-    }
-  }, [buildRequestBody, getCacheKey, handleTabChange, leagueData?.league_id, myTeam?.team_id, oppTeam?.team_id, weekNum, dateStart]);
+  }, [leagueData?.league_id, myTeam?.team_id, oppTeam?.team_id, weekNum, dateStart, matchupPrefetchTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (hasAnalysisData && myTeam && oppTeam) {
@@ -342,14 +318,12 @@ export default function MatchupPage() {
           setShowOverrides={setShowOverrides}
           analysisLoading={analysisLoading}
           analysisError={analysisError}
-          mcLoading={mcLoading}
           onSelectMyTeam={handleSelectMyTeam}
           onSelectOpponent={handleSelectOpponent}
           onSelectWeek={handleSelectWeek}
           onOverrideWeek={setWeekNum}
           onOverrideDate={setDateStart}
           onAnalyze={() => fetchAnalysis(true)}
-          onRunMonteCarlo={() => runMonteCarlo(false)}
           onOpenStreamers={() => navigate('/streamers')}
         />
 
@@ -360,7 +334,6 @@ export default function MatchupPage() {
             mcMatchupWin={mcMatchupWin}
             mcLoading={mcLoading}
             onSelectMonteCarloTab={() => handleTabChange('monte-carlo')}
-            onRunMonteCarlo={() => runMonteCarlo(false)}
           />
         )}
 
@@ -420,7 +393,7 @@ export default function MatchupPage() {
 
             {activeAnalysisTab === 'monte-carlo' && (
               <div className="tab-pane fade-in">
-                {mcLoading ? (
+                {mcLoading || analysisLoading || (!mcResult && !analysisError) ? (
                   <div className="card mc-loading-state" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
                     <div className="spinner large" style={{ width: '40px', height: '40px', borderWidth: '3px', margin: '0 auto 1.25rem' }} />
                     <h3 style={{ margin: '0 0 0.5rem', fontWeight: 700 }}>Simulating 10,000 Matchup Weeks…</h3>
@@ -454,22 +427,10 @@ export default function MatchupPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="card mc-empty-cta" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🎲</div>
-                    <h3 style={{ margin: '0 0 0.5rem', fontWeight: 700, fontSize: '1.3rem' }}>
-                      Run 10,000-Trial Monte Carlo Simulation
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)', maxWidth: '540px', margin: '0 auto 1.5rem', fontSize: '0.9rem', lineHeight: '1.5' }}>
-                      Simulate 10,000 full matchup weeks using Negative Binomial, Poisson, and Beta-Binomial models to account for nightly lineup volatility and blowout probability.
+                  <div className="card mc-empty-cta" style={{ textAlign: 'center', padding: '2.5rem 1.5rem' }}>
+                    <p className="input-error" role="alert" style={{ margin: 0 }}>
+                      ⚠️ {analysisError || 'Monte Carlo simulation unavailable.'} Click <strong>🔄 Re-analyze</strong> above to try again.
                     </p>
-                    <button
-                      className="btn-monte-carlo"
-                      style={{ padding: '10px 24px', fontSize: '0.95rem' }}
-                      onClick={() => runMonteCarlo(false)}
-                      disabled={mcLoading}
-                    >
-                      🎲 Start 10,000 Simulations
-                    </button>
                   </div>
                 )}
               </div>

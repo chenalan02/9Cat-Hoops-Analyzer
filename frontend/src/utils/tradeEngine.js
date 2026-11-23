@@ -17,7 +17,7 @@ export const PROJ_GAMES = 3.5;
 
 const IR_SET = new Set(['IL', 'IL+', 'IR', 'IR+', 'NA']);
 const NON_STARTING_SLOTS = new Set(['BN', 'IL', 'IL+', 'IR', 'IR+', 'NA']);
-const OUT_STATUS_SET = new Set(['OUT', 'INJ', 'INJ_OUT', 'IL', 'IL+', 'IR', 'IR+', 'O', 'SUSP']);
+export const OUT_STATUS_SET = new Set(['OUT', 'INJ', 'INJ_OUT', 'IL', 'IL+', 'IR', 'IR+', 'O', 'SUSP']);
 const STAT_KEYS = ['pts', 'reb', 'ast', 'stl', 'blk', 'fg3m', 'tov', 'fgm', 'fga', 'ftm', 'fta'];
 const COUNT_KEY = { PTS: 'pts', REB: 'reb', AST: 'ast', STL: 'stl', BLK: 'blk', '3PM': 'fg3m', TO: 'tov' };
 
@@ -26,6 +26,142 @@ export const ALL_CAT_SET = new Set(ALL_CAT_KEYS);
 
 export function isActiveSlot(p) {
   return !IR_SET.has(String(p?.selected_position || '').toUpperCase().trim());
+}
+
+/**
+ * Immutably returns updated league teams with chosen IR players activated to 'BN'
+ * (replacing active players moved to 'IL') and/or active players stashed to 'IL'
+ * (optionally filled by a free-agent/replacement player).
+ */
+export function applyIrSwapsToTeams(leagueTeams, teamId, irSwaps, irStashes = []) {
+  if (!leagueTeams?.length || teamId == null || (!irSwaps?.length && !irStashes?.length)) {
+    return { teams: leagueTeams || [], appliedSwaps: [] };
+  }
+
+  const targetIdx = leagueTeams.findIndex(t => String(t.team_id) === String(teamId));
+  if (targetIdx < 0) {
+    return { teams: leagueTeams, appliedSwaps: [] };
+  }
+
+  const targetTeam = leagueTeams[targetIdx];
+  const byName = new Map((targetTeam.players || []).map(p => [p.name, p]));
+  const usedIr = new Set();
+  const usedReplace = new Set();
+  const activateMap = new Map();
+  const replaceMap = new Map();
+  const stashMap = new Map();
+  const addedPlayers = [];
+  const addedNames = new Set();
+  const appliedSwaps = [];
+
+  for (const swap of (irSwaps || [])) {
+    const irName = swap?.irPlayerName;
+    if (!irName || usedIr.has(irName)) continue;
+    const irPlayer = byName.get(irName);
+    if (!irPlayer || isActiveSlot(irPlayer)) continue;
+
+    const repName = swap?.replacePlayerName && swap.replacePlayerName !== '__NONE__'
+      ? swap.replacePlayerName
+      : null;
+
+    let repPlayer = null;
+    if (repName) {
+      repPlayer = byName.get(repName);
+      if (!repPlayer || !isActiveSlot(repPlayer) || usedReplace.has(repName)) {
+        continue;
+      }
+      usedReplace.add(repName);
+      replaceMap.set(repName, irName);
+    }
+
+    usedIr.add(irName);
+    activateMap.set(irName, repName);
+    appliedSwaps.push({ type: 'activate', irPlayer, replacePlayer: repPlayer });
+  }
+
+  for (const stash of (irStashes || [])) {
+    const stashName = stash?.stashPlayerName;
+    if (!stashName || usedReplace.has(stashName)) continue;
+    const stashPlayer = byName.get(stashName);
+    if (!stashPlayer || !isActiveSlot(stashPlayer)) continue;
+
+    usedReplace.add(stashName);
+    const repRaw = stash?.replacementPlayer || null;
+    let addedPlayerObj = null;
+
+    if (repRaw?.name) {
+      let repName = repRaw.name;
+      if (repRaw.isReplacement && !repRaw.isRealFreeAgent && (byName.has(repName) || addedNames.has(repName))) {
+        let suffix = 2;
+        while (byName.has(`${repRaw.name} #${suffix}`) || addedNames.has(`${repRaw.name} #${suffix}`)) {
+          suffix += 1;
+        }
+        repName = `${repRaw.name} #${suffix}`;
+      }
+
+      if (!byName.has(repName) && !addedNames.has(repName)) {
+        addedNames.add(repName);
+        addedPlayerObj = {
+          ...repRaw,
+          name: repName,
+          selected_position: 'BN',
+          _origSelectedPosition: repRaw.selected_position || 'FA',
+          _irActivated: true,
+          _irStashFill: true,
+          _irReplacedPlayer: stashName,
+        };
+        addedPlayers.push(addedPlayerObj);
+      }
+    }
+
+    stashMap.set(stashName, addedPlayerObj);
+    appliedSwaps.push({ type: 'stash', irPlayer: addedPlayerObj, replacePlayer: stashPlayer });
+  }
+
+  if (!appliedSwaps.length) {
+    return { teams: leagueTeams, appliedSwaps: [] };
+  }
+
+  const nextPlayers = (targetTeam.players || []).map(p => {
+    if (activateMap.has(p.name)) {
+      return {
+        ...p,
+        selected_position: 'BN',
+        _origSelectedPosition: p.selected_position,
+        _irActivated: true,
+        _irReplacedPlayer: activateMap.get(p.name) || null,
+      };
+    }
+    if (replaceMap.has(p.name)) {
+      return {
+        ...p,
+        selected_position: 'IL',
+        _origSelectedPosition: p.selected_position,
+        _irReplaced: true,
+        _irReplacedBy: replaceMap.get(p.name),
+      };
+    }
+    if (stashMap.has(p.name)) {
+      return {
+        ...p,
+        selected_position: 'IL',
+        _origSelectedPosition: p.selected_position,
+        _irReplaced: true,
+        _irStashed: true,
+        _irReplacedBy: stashMap.get(p.name)?.name || null,
+      };
+    }
+    return p;
+  });
+
+  if (addedPlayers.length) {
+    nextPlayers.push(...addedPlayers);
+  }
+
+  const nextTeams = leagueTeams.map((t, idx) =>
+    idx === targetIdx ? { ...t, players: nextPlayers } : t
+  );
+  return { teams: nextTeams, appliedSwaps };
 }
 
 export function parsePositions(player) {

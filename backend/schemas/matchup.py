@@ -10,3 +10,4 @@ class MatchupProjectionRequest(BaseModel):
     roster_positions: list[Any] | None = None
     stats_source: str = "weekly_stats"
     monte_carlo: bool = False
+    include_monte_carlo: bool = False

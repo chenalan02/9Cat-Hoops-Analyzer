@@ -41,9 +41,19 @@ def project_matchup(
         logger.exception("Failed initializing Yahoo client for league_id=%s", league_id)
         raise UpstreamServiceError("Unable to authenticate with Yahoo Fantasy API.") from exc
 
-    runner = matchup_analysis_monte_carlo if request.monte_carlo else matchup_analysis
     try:
-        return runner(
+        if request.monte_carlo:
+            return matchup_analysis_monte_carlo(
+                yahoo_query=yahoo_query,
+                team1=request.team1,
+                team2=request.team2,
+                week_num=week_num,
+                date_start=request.date_start,
+                roster_positions=request.roster_positions,
+                stats_source=request.stats_source,
+                nba_schedule=nba_schedule,
+            )
+        return matchup_analysis(
             yahoo_query=yahoo_query,
             team1=request.team1,
             team2=request.team2,
@@ -52,6 +62,7 @@ def project_matchup(
             roster_positions=request.roster_positions,
             stats_source=request.stats_source,
             nba_schedule=nba_schedule,
+            include_monte_carlo=request.include_monte_carlo,
         )
     except AppError:
         raise

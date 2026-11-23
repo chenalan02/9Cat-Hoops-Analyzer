@@ -70,15 +70,51 @@ def _numbered_items(container):
     return [val for _, val in numbered]
 
 
-def _extract_selected_position(selected_pos_raw):
+def _extract_selected_position(selected_pos_raw, *, _allow_str=True):
+    if selected_pos_raw is None:
+        return None
     if isinstance(selected_pos_raw, str):
-        return selected_pos_raw
+        if not _allow_str:
+            return None
+        stripped = selected_pos_raw.strip()
+        return stripped or None
+
+    pos_attr = getattr(selected_pos_raw, "position", None)
+    if pos_attr is not None:
+        extracted = _extract_selected_position(pos_attr, _allow_str=True)
+        if extracted:
+            return extracted
+
     if isinstance(selected_pos_raw, dict):
-        return selected_pos_raw.get("position")
-    if isinstance(selected_pos_raw, list):
+        if "position" in selected_pos_raw:
+            extracted = _extract_selected_position(selected_pos_raw.get("position"), _allow_str=True)
+            if extracted:
+                return extracted
+        if "selected_position" in selected_pos_raw:
+            extracted = _extract_selected_position(selected_pos_raw.get("selected_position"), _allow_str=True)
+            if extracted:
+                return extracted
+        for key, val in selected_pos_raw.items():
+            if _to_int(key) is None:
+                continue
+            extracted = _extract_selected_position(val, _allow_str=False)
+            if extracted:
+                return extracted
+        for key, val in selected_pos_raw.items():
+            if key in ("count", "position", "selected_position") or _to_int(key) is not None:
+                continue
+            if isinstance(val, (dict, list, tuple)) or getattr(val, "position", None) is not None:
+                extracted = _extract_selected_position(val, _allow_str=False)
+                if extracted:
+                    return extracted
+        return None
+
+    if isinstance(selected_pos_raw, (list, tuple)):
         for item in selected_pos_raw:
-            if isinstance(item, dict) and item.get("position"):
-                return item["position"]
+            extracted = _extract_selected_position(item, _allow_str=False)
+            if extracted:
+                return extracted
+
     return None
 
 
@@ -269,8 +305,9 @@ class FantasyLeague:
                     photo_url = p_meta.get("image_url") or (p_meta.get("headshot") or {}).get("url")
                     status = str(p_meta.get("status") or extracted_status or "")
                     positions = p_meta.get("display_position") or extracted_positions
-                    selected_position = _extract_selected_position(
-                        extra_meta.get("selected_position") or p_meta.get("selected_position")
+                    selected_position = (
+                        _extract_selected_position(extra_meta.get("selected_position"))
+                        or _extract_selected_position(p_meta.get("selected_position"))
                     )
                     nba_team = p_meta.get("editorial_team_abbr")
                     y_rank, y_orank = yahoo_ranks_map.get(p_meta.get("player_key"), (None, None))
@@ -482,7 +519,7 @@ class Player:
             photo_url=player.image_url,
             status=player.status,
             positions=player.display_position,
-            selected_position=player.selected_position.position,
+            selected_position=_extract_selected_position(getattr(player, "selected_position", None)),
             nba_team=player.editorial_team_abbr,
             player_stats=player_stats,
         )

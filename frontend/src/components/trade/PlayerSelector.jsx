@@ -93,18 +93,40 @@ export default function PlayerSelector({
           const isFa = ownerId == null;
           const ownerName = teamOptions ? (isFa ? 'Free Agent' : ctx.teamById.get(ownerId)?.name) : null;
           const onIl = !isActiveSlot(p);
+          const irActivated = Boolean(p._irActivated);
+          const irStashFill = Boolean(p._irStashFill);
+          const irReplaced = Boolean(p._irReplaced);
+          const irStashed = Boolean(p._irStashed);
           return (
             <button
               key={p.name}
-              className={`selector-player ${isSelected ? 'selected' : ''}`}
+              type="button"
+              disabled={irReplaced}
+              className={`selector-player ${isSelected ? 'selected' : ''} ${irReplaced ? 'ir-replaced' : ''}`}
               onClick={() => onToggle(p)}
+              title={
+                irStashed
+                  ? `Moved to IR in IR Simulator${p._irReplacedBy ? ` (replaced by ${p._irReplacedBy})` : ''} — remove stash above to trade this player`
+                  : irReplaced
+                    ? `Replaced in IR Simulator${p._irReplacedBy ? ` by ${p._irReplacedBy}` : ''} — uncheck or change replacement above to trade this player`
+                    : undefined
+              }
             >
               <div className="sp-info">
                 <span className="sp-name">
                   {p.name}
                   {teamOptions && isFa && <span className="sp-fa-tag">FA</span>}
-                  {onIl && <span className="sp-il-tag">IL</span>}
-                  {p.status && !onIl && <span className="sp-status-tag">{p.status}</span>}
+                  {irActivated && (
+                    <span className="sp-ir-active-tag">{irStashFill ? 'FA→Active' : 'IR→Active'}</span>
+                  )}
+                  {irReplaced ? (
+                    <span className="sp-ir-replaced-tag">{irStashed ? 'Stashed (IR)' : 'Replaced (IR)'}</span>
+                  ) : (
+                    onIl && <span className="sp-il-tag">IL</span>
+                  )}
+                  {p.status && (!onIl || irActivated) && !irReplaced && (
+                    <span className="sp-status-tag">{p.status}</span>
+                  )}
                 </span>
                 <span className="sp-meta">
                   {p.nba_team} · {p.positions}{yr.effective != null ? ` · Y! #${yr.effective}` : ''}{ownerName ? ` · ${ownerName}` : ''}

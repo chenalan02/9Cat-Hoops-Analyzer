@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { computeLeagueZScores } from '../utils/zScore.js';
 import { syncLeague } from '../services/apiClient.js';
 import {
@@ -8,7 +8,15 @@ import {
   writeSessionString,
   removeSessionKey,
   removeSessionKeysByPrefix,
+  todayLocalDateString,
 } from '../services/storageCache.js';
+import {
+  MATCHUP_OPP_STORAGE_KEY,
+  MATCHUP_WEEK_STORAGE_KEY,
+  clearMatchupMemoryCache,
+  resolveDefaultOpponent,
+  runMatchupProjection,
+} from '../utils/matchupHelpers.js';
 
 const STORAGE_KEY = '9cat_league_data';
 const MY_TEAM_ID_KEY = '9cat_my_team_id';
@@ -66,6 +74,40 @@ export function useTeamData() {
   const [fantasyLink, setFantasyLink] = useState(() => readSessionString(FANTASY_LINK_KEY, ''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [matchupPrefetching, setMatchupPrefetching] = useState(false);
+  const [matchupPrefetchTick, setMatchupPrefetchTick] = useState(0);
+  const prefetchSeqRef = useRef(0);
+
+  const prefetchMatchupForTeam = useCallback((leaguePayload, teamId) => {
+    const targetTeam = leaguePayload?.teams?.find((t) => t.team_id === teamId) ?? leaguePayload?.teams?.[0];
+    const oppTeam = resolveDefaultOpponent(leaguePayload, targetTeam);
+    if (!leaguePayload?.league_id || !targetTeam || !oppTeam) return;
+
+    const weekNum = leaguePayload.week_num ?? 1;
+    const dateStart = todayLocalDateString();
+    writeSessionString(MATCHUP_OPP_STORAGE_KEY, String(oppTeam.team_id));
+    writeSessionString(MATCHUP_WEEK_STORAGE_KEY, String(weekNum));
+
+    const seq = ++prefetchSeqRef.current;
+    setMatchupPrefetching(true);
+
+    runMatchupProjection({
+      leagueId: leaguePayload.league_id,
+      weekNum,
+      dateStart,
+      myTeam: targetTeam,
+      oppTeam,
+      rosterPositions: leaguePayload.roster_positions ?? null,
+      forceRefresh: false,
+    })
+      .catch(() => {})
+      .finally(() => {
+        if (prefetchSeqRef.current === seq) {
+          setMatchupPrefetching(false);
+          setMatchupPrefetchTick((t) => t + 1);
+        }
+      });
+  }, []);
 
   const fetchTeam = useCallback(async (linkVal) => {
     setLoading(true);
@@ -81,6 +123,7 @@ export function useTeamData() {
       const enriched = computeLeagueZScores(payload.teams);
       const result = { ...payload, teams: enriched };
 
+      clearMatchupMemoryCache();
       removeSessionKeysByPrefix(MATCHUP_CACHE_PREFIXES);
       writeSessionJson(STORAGE_KEY, result);
       writeSessionString(MY_TEAM_ID_KEY, resolvedTeamId);
@@ -88,6 +131,7 @@ export function useTeamData() {
       setLeagueData(result);
       setMyTeamId(resolvedTeamId);
       setFantasyLink(linkVal);
+      prefetchMatchupForTeam(result, resolvedTeamId);
       return result;
     } catch (err) {
       setError(err.message || 'Invalid link or server unavailable. Please check that your Yahoo Fantasy link is correct and try again.');
@@ -99,7 +143,7 @@ export function useTeamData() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [prefetchMatchupForTeam]);
 
   const selectMyTeam = useCallback((teamId) => {
     const parsed = parseInt(teamId, 10);
@@ -107,7 +151,10 @@ export function useTeamData() {
     writeSessionString(MY_TEAM_ID_KEY, parsed);
     removeSessionKey('9cat_matchup_has_run');
     setMyTeamId(parsed);
-  }, []);
+    if (leagueData) {
+      prefetchMatchupForTeam(leagueData, parsed);
+    }
+  }, [leagueData, prefetchMatchupForTeam]);
 
   const refreshTeam = useCallback(async () => {
     const link = fantasyLink || readSessionString(FANTASY_LINK_KEY, '');
@@ -117,6 +164,9 @@ export function useTeamData() {
   }, [fantasyLink, fetchTeam]);
 
   const clearData = useCallback(() => {
+    clearMatchupMemoryCache();
+    prefetchSeqRef.current += 1;
+    setMatchupPrefetching(false);
     clearSessionLeagueKeys();
     removeSessionKeysByPrefix(MATCHUP_CACHE_PREFIXES);
     setLeagueData(null);
@@ -128,5 +178,18 @@ export function useTeamData() {
     ? leagueData.teams.find((t) => t.team_id === myTeamId) ?? leagueData.teams[0]
     : leagueData?.teams?.[0] ?? null;
 
-  return { leagueData, myTeam, myTeamId, selectMyTeam, loading, error, fetchTeam, refreshTeam, clearData, fantasyLink };
+  return {
+    leagueData,
+    myTeam,
+    myTeamId,
+    selectMyTeam,
+    loading,
+    error,
+    fetchTeam,
+    refreshTeam,
+    clearData,
+    fantasyLink,
+    matchupPrefetching,
+    matchupPrefetchTick,
+  };
 }

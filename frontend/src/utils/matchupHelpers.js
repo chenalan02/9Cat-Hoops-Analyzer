@@ -1,7 +1,9 @@
 import { CATEGORIES, ratioVariance } from './zScore.js';
+import { fetchMatchupProjection } from '../services/apiClient.js';
 import {
   readSessionJson,
   writeSessionJson,
+  writeSessionString,
 } from '../services/storageCache.js';
 
 export const BACKEND_TO_FRONTEND = {
@@ -32,6 +34,31 @@ const memoryStores = {
   [MC_CACHE_STORAGE_KEY]: {},
 };
 
+const inFlightMatchupRequests = new Map();
+let cacheGeneration = 0;
+
+export function buildMatchupCacheKey(leagueId, team1Id, team2Id, weekNum, dateStart) {
+  return `${leagueId || ''}-${team1Id}-${team2Id}-${weekNum}-${dateStart}`;
+}
+
+export function clearMatchupMemoryCache() {
+  cacheGeneration += 1;
+  memoryStores[MATCHUP_CACHE_STORAGE_KEY] = {};
+  memoryStores[MC_CACHE_STORAGE_KEY] = {};
+  inFlightMatchupRequests.clear();
+}
+
+export function resolveDefaultOpponent(leagueData, myTeam) {
+  if (!myTeam || !leagueData?.teams?.length) return null;
+  const scheduledOppId = myTeam.current_opponent_id || leagueData?.weekly_matchups?.[String(myTeam.team_id)] || null;
+  const opponents = leagueData.teams.filter(t => t.team_id !== myTeam.team_id);
+  if (scheduledOppId != null) {
+    const match = opponents.find(t => String(t.team_id) === String(scheduledOppId));
+    if (match) return match;
+  }
+  return opponents[0] || null;
+}
+
 export function getMatchupCache(storageKey, entryKey) {
   if (!entryKey) return null;
   const mem = memoryStores[storageKey];
@@ -53,6 +80,87 @@ export function setMatchupCache(storageKey, entryKey, data) {
   const keys = Object.keys(stored);
   if (keys.length > 25) delete stored[keys[0]];
   writeSessionJson(storageKey, stored);
+}
+
+export function runMatchupProjection({
+  leagueId,
+  weekNum,
+  dateStart,
+  myTeam,
+  oppTeam,
+  rosterPositions = null,
+  forceRefresh = false,
+}) {
+  if (!leagueId || !myTeam || !oppTeam) {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = buildMatchupCacheKey(leagueId, myTeam.team_id, oppTeam.team_id, weekNum, dateStart);
+
+  if (!forceRefresh) {
+    const cachedAnalysis = getMatchupCache(MATCHUP_CACHE_STORAGE_KEY, cacheKey);
+    const cachedMc = getMatchupCache(MC_CACHE_STORAGE_KEY, cacheKey);
+    if (cachedAnalysis && cachedMc) {
+      return Promise.resolve({ analysis: cachedAnalysis, mc: cachedMc, fromCache: true });
+    }
+    if (inFlightMatchupRequests.has(cacheKey)) {
+      return inFlightMatchupRequests.get(cacheKey);
+    }
+  }
+
+  const reqGen = cacheGeneration;
+  const payload = {
+    team1: myTeam,
+    team2: oppTeam,
+    date_start: dateStart,
+    roster_positions: rosterPositions ?? null,
+    stats_source: 'weekly_stats',
+    monte_carlo: false,
+    include_monte_carlo: true,
+  };
+
+  let requestPromise;
+  requestPromise = (async () => {
+    try {
+      const data = await fetchMatchupProjection(leagueId, weekNum, payload);
+      const { monte_carlo: embeddedMc, ...analysisData } = data || {};
+
+      let mcData = null;
+      if (embeddedMc?.win_pcts) {
+        mcData = {
+          ...embeddedMc,
+          inactive_players: data.inactive_players,
+          accumulated_stats: data.accumulated_stats,
+          player_games: data.player_games,
+          live_game_progress: data.live_game_progress,
+          live_adjustment: data.live_adjustment,
+        };
+      } else {
+        mcData = await fetchMatchupProjection(leagueId, weekNum, {
+          ...payload,
+          monte_carlo: true,
+          include_monte_carlo: false,
+        });
+      }
+
+      if (reqGen === cacheGeneration) {
+        setMatchupCache(MATCHUP_CACHE_STORAGE_KEY, cacheKey, analysisData);
+        if (mcData) {
+          setMatchupCache(MC_CACHE_STORAGE_KEY, cacheKey, mcData);
+        }
+        writeSessionString(MATCHUP_HAS_RUN_KEY, `${leagueId || ''}-${myTeam.team_id}`);
+      }
+
+      return { analysis: analysisData, mc: mcData, fromCache: false };
+    } finally {
+      if (inFlightMatchupRequests.get(cacheKey) === requestPromise) {
+        inFlightMatchupRequests.delete(cacheKey);
+      }
+    }
+  })();
+
+  inFlightMatchupRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 // Delta-method variance approximation for FG%/FT% ratios incorporating Cov(M, A).

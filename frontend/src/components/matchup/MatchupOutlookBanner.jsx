@@ -4,7 +4,6 @@ export default function MatchupOutlookBanner({
   mcMatchupWin,
   mcLoading,
   onSelectMonteCarloTab,
-  onRunMonteCarlo,
 }) {
   return (
     <div className="card matchup-outlook-card fade-up">
@@ -27,17 +26,11 @@ export default function MatchupOutlookBanner({
                 >
                   🎲 Monte Carlo: <strong>{Math.round(mcMatchupWin * 100)}%</strong>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  className="btn-mc-quick"
-                  onClick={onRunMonteCarlo}
-                  disabled={mcLoading}
-                  title="Run 10,000-trial Monte Carlo simulation"
-                >
-                  {mcLoading ? <><span className="spinner mini" /> Simulating…</> : '🎲 Run Monte Carlo'}
-                </button>
-              )}
+              ) : mcLoading ? (
+                <span className="mc-badge-pill">
+                  <span className="spinner mini" /> 🎲 Simulating…
+                </span>
+              ) : null}
             </div>
             <div className="matchup-outlook-subtitle">
               Projected probability to win 5 or more categories in Week {weekNum}

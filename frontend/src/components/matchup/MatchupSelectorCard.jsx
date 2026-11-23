@@ -11,14 +11,12 @@ export default function MatchupSelectorCard({
   setShowOverrides,
   analysisLoading,
   analysisError,
-  mcLoading,
   onSelectMyTeam,
   onSelectOpponent,
   onSelectWeek,
   onOverrideWeek,
   onOverrideDate,
   onAnalyze,
-  onRunMonteCarlo,
   onOpenStreamers,
 }) {
   return (
@@ -111,15 +109,6 @@ export default function MatchupSelectorCard({
               </button>
 
               <button
-                className="btn-monte-carlo"
-                onClick={onRunMonteCarlo}
-                disabled={mcLoading}
-                id="run-monte-carlo-btn"
-              >
-                {mcLoading ? <><span className="spinner" /> Running 10k…</> : '🎲 Run Monte Carlo'}
-              </button>
-
-              <button
                 type="button"
                 className="btn-ghost"
                 onClick={onOpenStreamers}
@@ -170,7 +159,7 @@ export default function MatchupSelectorCard({
             Analyzing Matchup &amp; Solving Lineups…
           </div>
           <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Processing weekly schedule, player statistical distributions, and 9-cat probabilities
+            Processing weekly schedule, player statistical distributions, 9-cat probabilities, and 10,000 Monte Carlo trials
           </span>
         </div>
       )}

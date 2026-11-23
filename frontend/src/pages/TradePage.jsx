@@ -5,6 +5,7 @@ import CategoryToggle from '../components/CategoryToggle.jsx';
 import YahooRefreshButton from '../components/common/YahooRefreshButton.jsx';
 import { LoadingView, EmptyState } from '../components/common/PageStateGuard.jsx';
 import CategoryStandings from '../components/trade/CategoryStandings.jsx';
+import IrActivationPanel from '../components/trade/IrActivationPanel.jsx';
 import PlayerSelector from '../components/trade/PlayerSelector.jsx';
 import TradeImpactPanel from '../components/trade/TradeImpactPanel.jsx';
 import TradeSuggestionsPanel from '../components/trade/TradeSuggestionsPanel.jsx';
@@ -15,7 +16,9 @@ import { readSessionJson, writeSessionJson } from '../services/storageCache.js';
 import {
   ALL_CAT_KEYS,
   ALL_CAT_SET,
+  OUT_STATUS_SET,
   isActiveSlot,
+  applyIrSwapsToTeams,
   buildTradeContext,
   evaluateTrade,
   categoryRanks,
@@ -53,6 +56,9 @@ export default function TradePage() {
   const [faPosFilter, setFaPosFilter] = useState('all');
   const [faCatFilter, setFaCatFilter] = useState('all');
   const [hideOutFas, setHideOutFas] = useState(true);
+  const [irSwapsMap, setIrSwapsMap] = useState({});
+  const [irStashes, setIrStashes] = useState([]);
+  const [compareVsRaw, setCompareVsRaw] = useState(false);
 
   const togglePunt = key => setPuntedCats(prev => {
     const next = new Set(prev);
@@ -115,7 +121,13 @@ export default function TradePage() {
   const activeCats = useMemo(() => new Set(ALL_CAT_KEYS.filter(k => !puntedCats.has(k))), [puntedCats]);
   const myTeamId = myTeam?.team_id;
 
-  const ctx = useMemo(() => {
+  useEffect(() => {
+    setIrSwapsMap({});
+    setIrStashes([]);
+    setCompareVsRaw(false);
+  }, [myTeamId]);
+
+  const rawCtx = useMemo(() => {
     if (!leagueData?.teams?.length || myTeamId == null) return null;
     return buildTradeContext(leagueData.teams, statsSource, activeCats, {
       freeAgents,
@@ -124,10 +136,249 @@ export default function TradePage() {
     });
   }, [leagueData, statsSource, activeCats, myTeamId, freeAgents, streamOpenSpot]);
 
+  const { irPlayers, activeRosterPlayers } = useMemo(() => {
+    if (!rawCtx || myTeamId == null) return { irPlayers: [], activeRosterPlayers: [] };
+    const team = rawCtx.teamById.get(myTeamId);
+    const players = team?.players || [];
+    const ir = players
+      .filter(p => !isActiveSlot(p))
+      .sort((a, b) => rawCtx.puntValue(b) - rawCtx.puntValue(a));
+    const active = players
+      .filter(p => isActiveSlot(p))
+      .sort((a, b) => rawCtx.puntValue(a) - rawCtx.puntValue(b));
+    return { irPlayers: ir, activeRosterPlayers: active };
+  }, [rawCtx, myTeamId]);
+
+  const enabledIrSwapList = useMemo(
+    () =>
+      Object.entries(irSwapsMap)
+        .filter(([, cfg]) => cfg?.enabled)
+        .map(([irPlayerName, cfg]) => ({
+          irPlayerName,
+          replacePlayerName: cfg.replacePlayerName || null,
+        })),
+    [irSwapsMap]
+  );
+
+  const stashFreeAgents = useMemo(() => {
+    if (!rawCtx?.freeAgents?.length) return [];
+    const isOut = (p) => OUT_STATUS_SET.has(String(p?.status || '').toUpperCase().trim());
+    return [...rawCtx.freeAgents]
+      .sort((a, b) => {
+        const outDiff = Number(isOut(a)) - Number(isOut(b));
+        if (outDiff !== 0) return outDiff;
+        return rawCtx.puntValue(b) - rawCtx.puntValue(a);
+      })
+      .slice(0, 30);
+  }, [rawCtx]);
+
+  const resolvedIrStashes = useMemo(() => {
+    if (!rawCtx || !irStashes.length) return [];
+    const faByName = new Map((rawCtx.freeAgents || []).map(p => [p.name, p]));
+    const claimedRealFa = new Set();
+    return irStashes.map(s => {
+      let replacementPlayer = null;
+      if (s.replaceWith === '__BEST_FA__') {
+        const best = rawCtx.replacement;
+        if (best && (!best.isRealFreeAgent || !claimedRealFa.has(best.name))) {
+          replacementPlayer = best;
+          if (best.isRealFreeAgent) claimedRealFa.add(best.name);
+        } else {
+          const fallbackFa = stashFreeAgents.find(fa => !claimedRealFa.has(fa.name)) || null;
+          if (fallbackFa) {
+            replacementPlayer = fallbackFa;
+            claimedRealFa.add(fallbackFa.name);
+          }
+        }
+      } else if (s.replaceWith && s.replaceWith !== '__NONE__') {
+        const fa = faByName.get(s.replaceWith) || null;
+        if (fa && !claimedRealFa.has(fa.name)) {
+          replacementPlayer = fa;
+          claimedRealFa.add(fa.name);
+        }
+      }
+      return { stashPlayerName: s.stashPlayerName, replacementPlayer };
+    });
+  }, [rawCtx, irStashes, stashFreeAgents]);
+
+  const { effectiveTeams, appliedIrSwaps } = useMemo(() => {
+    if (!leagueData?.teams?.length || myTeamId == null || (!enabledIrSwapList.length && !resolvedIrStashes.length)) {
+      return { effectiveTeams: leagueData?.teams || [], appliedIrSwaps: [] };
+    }
+    const { teams, appliedSwaps } = applyIrSwapsToTeams(
+      leagueData.teams,
+      myTeamId,
+      enabledIrSwapList,
+      resolvedIrStashes
+    );
+    return { effectiveTeams: teams, appliedIrSwaps: appliedSwaps };
+  }, [leagueData, myTeamId, enabledIrSwapList, resolvedIrStashes]);
+
+  const ctx = useMemo(() => {
+    if (!rawCtx) return null;
+    if (!appliedIrSwaps.length) return rawCtx;
+    return buildTradeContext(effectiveTeams, statsSource, activeCats, {
+      freeAgents,
+      rosterPositions: leagueData.roster_positions,
+      streamingBonus: streamOpenSpot ? 1.5 : 0,
+    });
+  }, [rawCtx, appliedIrSwaps.length, effectiveTeams, statsSource, activeCats, freeAgents, leagueData, streamOpenSpot]);
+
   const myPlayers = useMemo(() => {
-    if (!ctx || !myTeam) return [];
-    return [...myTeam.players].sort((a, b) => ctx.puntValue(b) - ctx.puntValue(a));
-  }, [ctx, myTeam]);
+    if (!ctx || myTeamId == null) return [];
+    const team = ctx.teamById.get(myTeamId);
+    if (!team) return [];
+    return [...team.players].sort((a, b) => ctx.puntValue(b) - ctx.puntValue(a));
+  }, [ctx, myTeamId]);
+
+  const handleToggleIr = (irPlayerName) => {
+    const currentlyEnabled = Boolean(irSwapsMap[irPlayerName]?.enabled);
+    if (currentlyEnabled) {
+      setIrSwapsMap(prev => ({
+        ...prev,
+        [irPlayerName]: { ...prev[irPlayerName], enabled: false },
+      }));
+      return;
+    }
+
+    const usedByOthers = new Set([
+      ...Object.entries(irSwapsMap)
+        .filter(([name, cfg]) => name !== irPlayerName && cfg?.enabled && cfg?.replacePlayerName)
+        .map(([, cfg]) => cfg.replacePlayerName),
+      ...irStashes.map(s => s.stashPlayerName),
+    ]);
+    const existingChoice = irSwapsMap[irPlayerName]?.replacePlayerName;
+    const validExisting = existingChoice && !usedByOthers.has(existingChoice)
+      && activeRosterPlayers.some(p => p.name === existingChoice);
+    const pickedReplace = validExisting
+      ? existingChoice
+      : (activeRosterPlayers.find(p => !usedByOthers.has(p.name))?.name ?? null);
+
+    setIrSwapsMap(prev => ({
+      ...prev,
+      [irPlayerName]: { enabled: true, replacePlayerName: pickedReplace },
+    }));
+    if (pickedReplace) {
+      setPlayersOut(prev => {
+        if (!prev.has(pickedReplace)) return prev;
+        const next = new Set(prev);
+        next.delete(pickedReplace);
+        return next;
+      });
+    }
+  };
+
+  const handleChangeIrReplace = (irPlayerName, rawTarget) => {
+    const replaceName = !rawTarget || rawTarget === '__NONE__' ? null : rawTarget;
+    setIrSwapsMap(prev => ({
+      ...prev,
+      [irPlayerName]: { enabled: true, replacePlayerName: replaceName },
+    }));
+    if (replaceName) {
+      setPlayersOut(prev => {
+        if (!prev.has(replaceName)) return prev;
+        const next = new Set(prev);
+        next.delete(replaceName);
+        return next;
+      });
+    }
+  };
+
+  const resolveStashFaName = (replaceWith) => {
+    if (!replaceWith || replaceWith === '__NONE__') return null;
+    if (replaceWith === '__BEST_FA__') return rawCtx?.replacement?.name || null;
+    return replaceWith;
+  };
+
+  const handleAddStash = (stashPlayerName, replaceWith = '__NONE__') => {
+    if (!stashPlayerName) return;
+    const claimedByYahooIr = Object.values(irSwapsMap).some(
+      cfg => cfg?.enabled && cfg?.replacePlayerName === stashPlayerName
+    );
+    if (claimedByYahooIr || irStashes.some(s => s.stashPlayerName === stashPlayerName)) {
+      return;
+    }
+
+    setIrStashes(prev => [...prev, { stashPlayerName, replaceWith }]);
+    setPlayersOut(prev => {
+      if (!prev.has(stashPlayerName)) return prev;
+      const next = new Set(prev);
+      next.delete(stashPlayerName);
+      return next;
+    });
+    const nextFaName = resolveStashFaName(replaceWith);
+    if (nextFaName) {
+      setPlayersIn(prev => {
+        if (!prev.has(nextFaName)) return prev;
+        const next = new Set(prev);
+        next.delete(nextFaName);
+        return next;
+      });
+    }
+  };
+
+  const handleChangeStashReplace = (stashPlayerName, rawTarget) => {
+    const nextReplaceWith = !rawTarget ? '__NONE__' : rawTarget;
+    const existing = irStashes.find(s => s.stashPlayerName === stashPlayerName);
+    const prevFaName = resolveStashFaName(existing?.replaceWith);
+    const nextFaName = resolveStashFaName(nextReplaceWith);
+
+    setIrStashes(prev => prev.map(s => (
+      s.stashPlayerName === stashPlayerName
+        ? { ...s, replaceWith: nextReplaceWith }
+        : s
+    )));
+
+    if (nextFaName) {
+      setPlayersIn(prev => {
+        if (!prev.has(nextFaName)) return prev;
+        const next = new Set(prev);
+        next.delete(nextFaName);
+        return next;
+      });
+    }
+    if (prevFaName && prevFaName !== nextFaName) {
+      setPlayersOut(prev => {
+        if (!prev.has(prevFaName)) return prev;
+        const next = new Set(prev);
+        next.delete(prevFaName);
+        return next;
+      });
+    }
+  };
+
+  const handleRemoveStash = (stashPlayerName) => {
+    const existing = irStashes.find(s => s.stashPlayerName === stashPlayerName);
+    const prevFaName = resolveStashFaName(existing?.replaceWith);
+    setIrStashes(prev => prev.filter(s => s.stashPlayerName !== stashPlayerName));
+    if (prevFaName) {
+      setPlayersOut(prev => {
+        if (!prev.has(prevFaName)) return prev;
+        const next = new Set(prev);
+        next.delete(prevFaName);
+        return next;
+      });
+    }
+  };
+
+  const handleResetIr = () => {
+    const stashFaNames = irStashes
+      .map(s => resolveStashFaName(s.replaceWith))
+      .filter(Boolean);
+    setIrSwapsMap({});
+    setIrStashes([]);
+    setCompareVsRaw(false);
+    if (stashFaNames.length) {
+      setPlayersOut(prev => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const name of stashFaNames) {
+          if (next.delete(name)) changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }
+  };
 
   const otherTeams = useMemo(
     () => (leagueData?.teams || []).filter(t => t.team_id !== myTeamId),
@@ -267,6 +518,16 @@ export default function TradePage() {
   }
 
   const baseWins = ctx.baseWins.get(myTeamId);
+  const rawWins = rawCtx ? rawCtx.baseWins.get(myTeamId) : null;
+  const rawRanks = rawCtx ? categoryRanks(myTeamId, rawCtx.distById) : null;
+  const irDelta = appliedIrSwaps.length > 0 && rawWins
+    ? {
+        delta: baseWins.total - rawWins.total,
+        beforeTotal: rawWins.total,
+        afterTotal: baseWins.total,
+        activeCount: activeCats.size,
+      }
+    : null;
   const numTeams = leagueData.teams.length;
   const activeCount = activeCats.size;
   const sourceMeta = SOURCE_OPTIONS.find(s => s.key === statsSource);
@@ -348,12 +609,33 @@ export default function TradePage() {
 
         <CategoryToggle puntedCats={puntedCats} onToggle={togglePunt} label="Punt Build" />
 
+        <IrActivationPanel
+          irPlayers={irPlayers}
+          activePlayers={activeRosterPlayers}
+          irSwaps={irSwapsMap}
+          irStashes={irStashes}
+          freeAgents={stashFreeAgents}
+          waiverReplacement={rawCtx.replacement}
+          onToggleIr={handleToggleIr}
+          onChangeReplace={handleChangeIrReplace}
+          onAddStash={handleAddStash}
+          onChangeStashReplace={handleChangeStashReplace}
+          onRemoveStash={handleRemoveStash}
+          onReset={handleResetIr}
+          rawCtx={rawCtx}
+          statsSource={statsSource}
+          irDelta={irDelta}
+        />
+
         <CategoryStandings
           wins={baseWins}
           ranks={baseRanks}
           numTeams={numTeams}
           puntedCats={puntedCats}
           activeCount={activeCount}
+          rawWins={rawWins}
+          rawRanks={rawRanks}
+          irActiveCount={appliedIrSwaps.length}
         />
 
         {tab === 'analyzer' ? (
@@ -412,6 +694,13 @@ export default function TradePage() {
               partnerPuntsSet={partnerPuntsSet}
               partnerActiveCats={partnerActiveCats}
               onTogglePartnerPunt={togglePartnerPunt}
+              appliedIrSwaps={appliedIrSwaps}
+              rawCtx={rawCtx}
+              rawWins={rawWins}
+              rawRanks={rawRanks}
+              compareVsRaw={compareVsRaw}
+              setCompareVsRaw={setCompareVsRaw}
+              onResetIr={handleResetIr}
             />
           </div>
         ) : tab === 'suggest' ? (

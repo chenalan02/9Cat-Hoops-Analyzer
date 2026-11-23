@@ -1,6 +1,6 @@
 import { CATEGORIES } from '../../utils/zScore.js';
 import { formatZ } from '../../utils/formatters.js';
-import { PROJ_GAMES, isActiveSlot, computeYahooFairness } from '../../utils/tradeEngine.js';
+import { PROJ_GAMES, isActiveSlot, computeYahooFairness, comparePositionImpact } from '../../utils/tradeEngine.js';
 import { signed, verdictFor, partnerVerdict } from './tradeFormatters.js';
 import AssetExchangeGrid from './AssetExchangeGrid.jsx';
 import CatBar from './CatBar.jsx';
@@ -27,8 +27,19 @@ export default function TradeImpactPanel({
   partnerPuntsSet,
   partnerActiveCats,
   onTogglePartnerPunt,
+  appliedIrSwaps = [],
+  rawCtx = null,
+  rawWins = null,
+  rawRanks = null,
+  compareVsRaw = false,
+  setCompareVsRaw = null,
+  onResetIr = null,
 }) {
-  const verdict = evaluation ? verdictFor(evaluation.my.delta) : null;
+  const verdict = evaluation ? verdictFor(
+    hasChanges && appliedIrSwaps.length > 0 && compareVsRaw && rawWins
+      ? evaluation.my.after.total - rawWins.total
+      : evaluation.my.delta
+  ) : null;
   const pCatChanges = evaluation?.partner && partnerTeam
     ? CATEGORIES
         .map(cat => ({ cat, d: evaluation.partner.catChanges?.[cat.key]?.probDelta ?? 0 }))
@@ -39,8 +50,108 @@ export default function TradeImpactPanel({
   const partnerVerdictMeta = evaluation?.partner ? partnerVerdict(evaluation.partner.delta) : null;
   const yahooFairness = evaluation ? computeYahooFairness(ctx, outList, inList) : null;
 
+  const isIrPreviewOnly = !hasChanges && appliedIrSwaps.length > 0 && Boolean(rawCtx && rawWins && rawRanks);
+  const isIrWithTrade = hasChanges && Boolean(evaluation) && appliedIrSwaps.length > 0;
+  const useRawBaseline = isIrWithTrade && compareVsRaw && Boolean(rawCtx && rawWins && rawRanks);
+
+  const irActivatedList = appliedIrSwaps.map(s => s.irPlayer).filter(Boolean);
+  const irReplacedList = appliedIrSwaps.map(s => s.replacePlayer).filter(Boolean);
+  const irSummaryText = appliedIrSwaps
+    .map(s => {
+      if (s.type === 'stash') {
+        return s.irPlayer
+          ? `IR: ${s.replacePlayer.name} (+${s.irPlayer.name})`
+          : `IR: ${s.replacePlayer.name}`;
+      }
+      return s.replacePlayer
+        ? `+${s.irPlayer.name} (−${s.replacePlayer.name})`
+        : `+${s.irPlayer.name}`;
+    })
+    .join(', ');
+
+  let irPreviewDelta = null;
+  let irPreviewVerdict = null;
+  let irPreviewZ = null;
+  let irPreviewPosWarnings = [];
+  if (isIrPreviewOnly) {
+    irPreviewDelta = baseWins.total - rawWins.total;
+    irPreviewVerdict = verdictFor(irPreviewDelta);
+    const inZ = irActivatedList.reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    const outZ = irReplacedList.reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    irPreviewZ = { inZ, outZ, net: inZ - outZ };
+    const rawTeam = rawCtx.teamById.get(myTeamId);
+    const effTeam = ctx.teamById.get(myTeamId);
+    if (rawTeam && effTeam) {
+      irPreviewPosWarnings = comparePositionImpact(rawTeam.players, effTeam.players, ctx.rosterPositions);
+    }
+  }
+
+  let displayZSummary = zSummary;
+  if (useRawBaseline && zSummary && rawCtx) {
+    const irInZ = irActivatedList.reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    const irOutZ = irReplacedList.reduce((sum, p) => sum + rawCtx.puntValue(p), 0);
+    displayZSummary = {
+      inZ: zSummary.inZ + irInZ,
+      outZ: zSummary.outZ + irOutZ,
+      net: zSummary.net + (irInZ - irOutZ),
+    };
+  }
+
+  const beforeDistMap = (isIrPreviewOnly || useRawBaseline)
+    ? rawCtx.distById.get(myTeamId)
+    : ctx.distById.get(myTeamId);
+  const beforeWinsObj = (isIrPreviewOnly || useRawBaseline) ? rawWins : baseWins;
+  const beforeRanksObj = (isIrPreviewOnly || useRawBaseline) ? rawRanks : baseRanks;
+
+  const afterDistMap = isIrPreviewOnly
+    ? ctx.distById.get(myTeamId)
+    : evaluation?.distAfter;
+  const afterWinsObj = isIrPreviewOnly ? baseWins : evaluation?.my.after;
+  const afterRanksObj = isIrPreviewOnly ? baseRanks : evaluation?.ranksAfter;
+  const showBarChange = Boolean(evaluation || isIrPreviewOnly);
+
+  const summaryDelta = isIrPreviewOnly
+    ? irPreviewDelta
+    : useRawBaseline
+      ? evaluation.my.after.total - rawWins.total
+      : evaluation?.my.delta;
+
+  const summaryZ = isIrPreviewOnly ? irPreviewZ : displayZSummary;
+  const summaryVerdict = isIrPreviewOnly ? irPreviewVerdict : verdict;
+
   return (
     <div className="trade-impact">
+      {isIrWithTrade && (
+        <div className="trade-balance-alert ir-sim">
+          <span className="tba-icon">🏥</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <strong>IR Sim Active:</strong> <span>{irSummaryText}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <label
+                  className="stream-spot-toggle"
+                  title="Measure delta against your current Yahoo roster instead of the post-IR baseline"
+                >
+                  <input
+                    type="checkbox"
+                    checked={compareVsRaw}
+                    onChange={e => setCompareVsRaw?.(e.target.checked)}
+                  />
+                  <span>Compare vs. current Yahoo roster</span>
+                </label>
+                {onResetIr && (
+                  <button type="button" className="btn-ghost ir-banner-reset" onClick={onResetIr}>
+                    Reset IR
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {evaluation && evaluation.my.drops.length > 0 && (
         <div className="trade-balance-alert warning">
           <span className="tba-icon">⚠️</span>
@@ -75,35 +186,43 @@ export default function TradeImpactPanel({
         </div>
       )}
 
-      {evaluation?.myPosWarnings?.length > 0 && (
-        <div className={`trade-balance-alert ${evaluation.myPosWarnings.some(w => w.severity === 'error') ? 'danger' : 'warning'}`}>
+      {(evaluation?.myPosWarnings?.length > 0 || irPreviewPosWarnings.length > 0) && (
+        <div className={`trade-balance-alert ${(isIrPreviewOnly ? irPreviewPosWarnings : evaluation.myPosWarnings).some(w => w.severity === 'error') ? 'danger' : 'warning'}`}>
           <span className="tba-icon">🧩</span>
           <div>
             <strong>Positional coverage:</strong>{' '}
-            {evaluation.myPosWarnings.map(w => w.text).join(' · ')}
+            {(isIrPreviewOnly ? irPreviewPosWarnings : evaluation.myPosWarnings).map(w => w.text).join(' · ')}
           </div>
         </div>
       )}
 
-      <div className={`impact-summary card ${evaluation ? (evaluation.my.delta >= 0.08 ? 'impact-positive' : evaluation.my.delta <= -0.08 ? 'impact-negative' : '') : ''}`}>
-        <div className="impact-label">Δ Expected Category Wins / Week (vs league)</div>
-        {evaluation ? (
+      <div className={`impact-summary card ${showBarChange ? (summaryDelta >= 0.08 ? 'impact-positive' : summaryDelta <= -0.08 ? 'impact-negative' : '') : ''}`}>
+        <div className="impact-label">
+          {isIrPreviewOnly
+            ? 'Δ Expected Category Wins / Week — IR Roster Preview'
+            : useRawBaseline
+              ? 'Δ Expected Category Wins / Week (vs current Yahoo roster)'
+              : 'Δ Expected Category Wins / Week (vs league)'}
+        </div>
+        {showBarChange ? (
           <>
-            <div className={`impact-delta ${evaluation.my.delta >= 0 ? 'z-elite' : 'z-bad'}`}>
-              {signed(evaluation.my.delta)}
+            <div className={`impact-delta ${summaryDelta >= 0 ? 'z-elite' : 'z-bad'}`}>
+              {signed(summaryDelta)}
             </div>
             <div className="impact-sub">
-              <span>{evaluation.my.before.total.toFixed(2)} → <strong>{evaluation.my.after.total.toFixed(2)}</strong> of {activeCount} cats</span>
+              <span>{beforeWinsObj.total.toFixed(2)} → <strong>{afterWinsObj.total.toFixed(2)}</strong> of {activeCount} cats</span>
               <span className="impact-sub-sep">·</span>
-              <span title="Sum of punt-adjusted Z of incoming minus outgoing (incl. forced drops / waiver fillers)">
-                Punt-adj. Z: <strong className={zSummary.net >= 0 ? 'z-elite' : 'z-bad'}>{signed(zSummary.net)}</strong>
-                {' '}({signed(zSummary.inZ, 1)} in / {signed(zSummary.outZ, 1)} out)
+              <span title="Sum of punt-adjusted Z of incoming/activated minus outgoing/replaced">
+                Punt-adj. Z: <strong className={summaryZ.net >= 0 ? 'z-elite' : 'z-bad'}>{signed(summaryZ.net)}</strong>
+                {' '}({signed(summaryZ.inZ, 1)} in / {signed(summaryZ.outZ, 1)} out)
               </span>
             </div>
-            <div className={`impact-verdict ${verdict.cls}`}>{verdict.text}</div>
-            {Math.sign(evaluation.my.delta) !== Math.sign(zSummary.net) && Math.abs(zSummary.net) > 0.5 && Math.abs(evaluation.my.delta) > 0.05 && (
+            <div className={`impact-verdict ${summaryVerdict.cls}`}>
+              {isIrPreviewOnly ? `IR Sim: ${summaryVerdict.text}` : summaryVerdict.text}
+            </div>
+            {!isIrPreviewOnly && Math.sign(summaryDelta) !== Math.sign(summaryZ.net) && Math.abs(summaryZ.net) > 0.5 && Math.abs(summaryDelta) > 0.05 && (
               <div className="impact-note">
-                {zSummary.net > 0
+                {summaryZ.net > 0
                   ? 'You gain raw value, but it lands in categories you already win, lose comfortably, or punt.'
                   : 'You give up raw value, but the stats you gain land in your competitive categories — a fit-driven win.'}
               </div>
@@ -203,14 +322,21 @@ export default function TradeImpactPanel({
               source={statsSource}
               puntedCats={puntedCats}
             />
+          ) : isIrPreviewOnly ? (
+            <AssetExchangeGrid
+              inList={irActivatedList}
+              outList={irReplacedList}
+              source={statsSource}
+              puntedCats={puntedCats}
+            />
           ) : (
             <div className="impact-placeholder">Select players to see category differentials</div>
           )
         ) : (
           <div className="cat-bar-list">
             <div className="cat-legend-bar">
-              <span className="legend-dot before" /> Current win %
-              {evaluation && (
+              <span className="legend-dot before" /> {isIrPreviewOnly ? 'Current win %' : 'Current win %'}
+              {showBarChange && (
                 <>
                   &nbsp; <span className="legend-dot after" /> Gain
                   &nbsp; <span className="legend-dot loss" /> Drop
@@ -234,30 +360,42 @@ export default function TradeImpactPanel({
               <CatBar
                 key={cat.key}
                 cat={cat}
-                before={ctx.distById.get(myTeamId)[cat.key].mu}
-                after={evaluation?.distAfter[cat.key].mu}
-                probBefore={baseWins.perCat[cat.key]}
-                probAfter={evaluation?.my.after.perCat[cat.key]}
-                rankBefore={baseRanks[cat.key]}
-                rankAfter={evaluation?.ranksAfter[cat.key]}
+                before={beforeDistMap[cat.key].mu}
+                after={afterDistMap?.[cat.key].mu}
+                probBefore={beforeWinsObj.perCat[cat.key]}
+                probAfter={afterWinsObj?.perCat[cat.key]}
+                rankBefore={beforeRanksObj[cat.key]}
+                rankAfter={afterRanksObj?.[cat.key]}
                 punted={puntedCats.has(cat.key)}
-                showChange={!!evaluation}
+                showChange={showBarChange}
               />
             ))}
           </div>
         )}
       </div>
 
-      {hasChanges && (
+      {(hasChanges || isIrPreviewOnly) && (
         <div className="player-delta-panel card">
           <div className="impact-cats-header">
             <span>
-              Player Breakdown ({ctx.replacement.isRealFreeAgent ? `waiver benchmark: ${ctx.replacement.name}, ` : 'waiver replacement: '}Z {formatZ(ctx.replacement.puntZ)})
+              {isIrPreviewOnly
+                ? 'IR Swap Breakdown'
+                : `Player Breakdown (${ctx.replacement.isRealFreeAgent ? `waiver benchmark: ${ctx.replacement.name}, ` : 'waiver replacement: '}Z ${formatZ(ctx.replacement.puntZ)})`}
             </span>
           </div>
           <div className="player-delta-grid">
-            {outList.map(p => <PlayerBreakdownCard key={p.name} p={p} kind="out" ctx={ctx} puntedCats={puntedCats} />)}
-            {inList.map(p => <PlayerBreakdownCard key={p.name} p={p} kind="in" ctx={ctx} puntedCats={puntedCats} />)}
+            {(isIrPreviewOnly
+              ? irReplacedList.map(p => ({ ...p, selected_position: p._origSelectedPosition || p.selected_position }))
+              : outList
+            ).map(p => (
+              <PlayerBreakdownCard key={`out-${p.name}`} p={p} kind="out" ctx={ctx} puntedCats={puntedCats} />
+            ))}
+            {(isIrPreviewOnly
+              ? irActivatedList.map(p => ({ ...p, selected_position: 'BN' }))
+              : inList
+            ).map(p => (
+              <PlayerBreakdownCard key={`in-${p.name}`} p={p} kind="in" ctx={ctx} puntedCats={puntedCats} />
+            ))}
           </div>
         </div>
       )}

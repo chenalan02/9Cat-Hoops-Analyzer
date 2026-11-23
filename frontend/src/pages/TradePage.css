@@ -1503,7 +1503,420 @@
   border-radius: var(--radius-md);
 }
 
+/* ─── IR Roster Simulator ───────────────────────────── */
+.ir-sim-panel {
+  padding: 0.95rem 1.15rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.ir-sim-panel.active {
+  border-color: rgba(0, 230, 118, 0.35);
+  background: rgba(0, 230, 118, 0.03);
+}
+
+.ir-sim-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.ir-sim-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ir-sim-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ir-sim-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.ir-sim-count-pill {
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 230, 118, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+}
+
+.ir-sim-status-pill {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.ir-sim-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.ir-sim-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ir-sim-delta-pill {
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.ir-sim-delta-pill.pos {
+  background: rgba(0, 230, 118, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+}
+
+.ir-sim-delta-pill.neg {
+  background: rgba(248, 113, 113, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.ir-sim-reset-btn,
+.ir-banner-reset {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+}
+
+.ir-sim-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ir-sim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.ir-sim-row.enabled {
+  border-color: rgba(0, 230, 118, 0.38);
+  background: rgba(0, 230, 118, 0.06);
+}
+
+.ir-sim-player-side {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.ir-sim-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.ir-sim-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+}
+
+.ir-sim-toggle.on {
+  background: rgba(0, 230, 118, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ir-sim-toggle-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ir-sim-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ir-sim-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ir-sim-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.ir-sim-rank {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ir-sim-z {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.ir-sim-warn-pill {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #fb923c;
+}
+
+.ir-sim-replace-side {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 250px;
+  justify-content: flex-end;
+}
+
+.ir-sim-arrow {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ir-sim-select {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  max-width: 290px;
+  width: 100%;
+}
+
+.ir-sim-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.ir-sim-remove-btn:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.ir-sim-stash-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ir-sim-stash-picker.with-divider {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.ir-sim-quick-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ir-sim-quick-label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ir-sim-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  background: rgba(251, 146, 60, 0.1);
+  color: #fb923c;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.ir-sim-quick-chip:hover {
+  background: rgba(251, 146, 60, 0.18);
+  border-color: rgba(251, 146, 60, 0.65);
+}
+
+.ir-sim-stash-select-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.ir-sim-picker-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.ir-sim-stash-bar {
+  margin-top: 0.65rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ir-sim-stash-add-btn,
+.ir-sim-stash-hide-btn {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+}
+
+.sp-ir-stash-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(251, 146, 60, 0.16);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.35);
+}
+
+/* CategoryStandings + PlayerSelector + Banner IR Additions */
+.cs-ir-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 230, 118, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+}
+
+.cs-total-raw {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.cs-ir-total-delta.pos,
+.cs-ir-delta.pos {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cs-ir-total-delta.neg,
+.cs-ir-delta.neg {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.sp-ir-active-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 5px;
+  background: rgba(0, 230, 118, 0.18);
+  color: var(--accent);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+}
+
+.sp-ir-replaced-tag {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 5px;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-muted);
+}
+
+.selector-player.ir-replaced {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.trade-balance-alert.ir-sim {
+  border-color: rgba(0, 230, 118, 0.35);
+  background: rgba(0, 230, 118, 0.06);
+}
+
 @media (max-width: 640px) {
+  .ir-sim-panel {
+    padding: 0.8rem;
+  }
+
+  .ir-sim-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ir-sim-replace-side {
+    justify-content: flex-start;
+  }
+
+  .ir-sim-select {
+    max-width: 100%;
+  }
+
+  .ir-sim-stash-select-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .trade-mode-tabs {
     width: 100%;
     display: grid;
